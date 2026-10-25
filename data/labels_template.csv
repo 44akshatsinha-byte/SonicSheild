@@ -1,0 +1,7 @@
+file,label,speaker,source,codec,room,attack_type
+raw/real/spk01_rec01.wav,real,spk01,consented_local,clean,office,none
+raw/real/spk01_rec02.wav,real,spk01,consented_local,g711,bedroom,none
+raw/fake/spk01_clone_dry.wav,fake,spk01,f5_tts,clean,none,dry_synthetic
+raw/fake/spk01_clone_replay.wav,fake,spk01,f5_tts,g711,living_room,replayed_speaker
+raw/real/spk02_rec01.wav,real,spk02,vctk,clean,studio,none
+raw/fake/spk02_clone01.wav,fake,spk02,wavefake,clean,none,dry_synthetic

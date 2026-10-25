@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+.venv/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Audio Data & Large Files
+data/raw/real/*
+!data/raw/real/.gitkeep
+data/raw/fake/*
+!data/raw/fake/.gitkeep
+data/phone/g711/*
+!data/phone/g711/.gitkeep
+data/phone/amr/*
+!data/phone/amr/.gitkeep
+*.wav
+*.mp3
+*.amr
+!data/smoke/*.wav
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
