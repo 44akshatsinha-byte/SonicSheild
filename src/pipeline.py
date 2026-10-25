@@ -1,4 +1,8 @@
-"""SonicShield Unified Acoustic Processing Pipeline."""
+"""SonicShield Unified Acoustic Processing Pipeline.
+
+Supports rule-based baseline scoring, genuine trained ML model scoring,
+and side-by-side comparison mode across 6s rolling windows.
+"""
 from __future__ import annotations
 
 import io
@@ -11,6 +15,8 @@ from src.codec_crusher import crush, CodecUnavailableError
 from src.physics_engine import analyze as analyze_physics
 from src.biology_engine import analyze as analyze_biology
 from src.scorer import score_window, get_band, get_band_label
+from src.ml_features import extract_features
+from src.ml_classifier import get_ml_classifier
 
 class PipelineError(Exception):
     """Raised when an unrecoverable pipeline failure occurs."""
@@ -20,6 +26,7 @@ def run_pipeline(
     file_source: str | io.BytesIO | bytes | np.ndarray,
     codec: str = "clean",
     mode: str = "both",
+    detection_mode: str = "baseline",
     sr: int = 8000,
     packet_loss_rate: float = 0.0,
     line_noise_snr: float | None = None,
@@ -29,7 +36,8 @@ def run_pipeline(
     Args:
         file_source: Filepath, bytes, BytesIO, or preloaded 8 kHz float32 numpy array.
         codec: 'clean', 'g711' (ITU-T G.711 mu-law), or 'amr'.
-        mode: 'both', 'physics', or 'biology' (ablation support).
+        mode: Ablation mode for engines: 'both', 'physics', or 'biology'.
+        detection_mode: 'baseline' (rule-based), 'ml' (trained model), or 'compare' (both).
         sr: Audio sample rate (default 8000).
         packet_loss_rate: Optional simulated network packet loss rate [0.0 - 0.1].
         line_noise_snr: Optional telephone line noise SNR in dB.
@@ -39,6 +47,19 @@ def run_pipeline(
     """
     start_time = time.perf_counter()
     warnings: list[str] = []
+
+    detection_mode = detection_mode.lower().strip()
+    if detection_mode not in ("baseline", "ml", "compare"):
+        detection_mode = "baseline"
+
+    # Get ML classifier instance
+    ml_clf = get_ml_classifier()
+    if detection_mode in ("ml", "compare") and not ml_clf.is_loaded:
+        warnings.append(
+            f"ML model is unavailable ({ml_clf.load_status}). "
+            f"Run 'python scripts/train_ml_model.py' to train and save a model. "
+            f"Baseline rule-based scoring will be used for primary decisions."
+        )
 
     # 1. Audio Loading & Preprocessing
     if isinstance(file_source, np.ndarray):
@@ -71,7 +92,7 @@ def run_pipeline(
     if not windows:
         raise PipelineError("No analysis windows could be generated from input audio.")
 
-    # 4. Engine Analysis & Scorer Fusion per Window
+    # 4. Engine Analysis, Scorer Fusion, & ML Inference per Window
     window_results: list[dict] = []
     history: list[dict] = []
 
@@ -94,8 +115,34 @@ def run_pipeline(
                 "features": {"usable": False, "error": str(e)},
             }
 
+        # Rule-based baseline scoring
         scored = score_window(phys_res, bio_res, history=history, mode=mode)
         history.append(scored)
+
+        # Numerical ML Feature Vector Extraction
+        feat_vec, feat_dict, quality = extract_features(
+            phys_res,
+            bio_res,
+            window_audio=win.audio,
+            sr=sr,
+        )
+
+        # ML Model Inference
+        ml_res = ml_clf.predict_window(feat_vec)
+
+        # Determine active score based on detection_mode
+        baseline_score = scored["liveness"]
+        baseline_band = scored["band"]
+        baseline_band_label = scored["band_label"]
+
+        if detection_mode == "ml" and ml_res["is_available"]:
+            active_score = ml_res["ml_score"]
+            active_band = ml_res["band"]
+            active_band_label = ml_res["band_label"]
+        else:
+            active_score = baseline_score
+            active_band = baseline_band
+            active_band_label = baseline_band_label
 
         win_payload = {
             "window_index": win.index,
@@ -103,10 +150,17 @@ def run_pipeline(
             "t_end": win.t_end,
             "t": win.t,
             "is_padded": win.is_padded,
-            "liveness": scored["liveness"],
-            "raw_liveness": scored["raw_liveness"],
-            "band": scored["band"],
-            "band_label": scored["band_label"],
+            "liveness": active_score,
+            "band": active_band,
+            "band_label": active_band_label,
+            "baseline_score": baseline_score,
+            "baseline_band": baseline_band,
+            "baseline_band_label": baseline_band_label,
+            "ml_score": ml_res["ml_score"],
+            "ml_band": ml_res["band"],
+            "ml_band_label": ml_res["band_label"],
+            "ml_prob": ml_res["raw_prob"],
+            "ml_status": ml_res["status"],
             "physics": scored["physics"],
             "biology": scored["biology"],
             "reasons": scored["reasons"],
@@ -114,6 +168,8 @@ def run_pipeline(
             "features": {
                 "physics": phys_res.get("features", {}),
                 "biology": bio_res.get("features", {}),
+                "ml_vector": feat_dict,
+                "quality": quality,
             },
         }
         if win.warning:
@@ -121,12 +177,22 @@ def run_pipeline(
 
         window_results.append(win_payload)
 
-    # 5. Aggregate Overall Session Score
-    valid_scores = [w["liveness"] for w in window_results]
+    # 5. Aggregate Overall Session Scores
+    valid_baseline_scores = [w["baseline_score"] for w in window_results]
+    valid_ml_scores = [w["ml_score"] for w in window_results if w["ml_score"] is not None]
     valid_phys = [w["physics"] for w in window_results]
     valid_bio = [w["biology"] for w in window_results]
 
-    overall_liveness = int(round(float(np.mean(valid_scores)))) if valid_scores else 50
+    overall_baseline_liveness = int(round(float(np.mean(valid_baseline_scores)))) if valid_baseline_scores else 50
+    overall_ml_liveness = (
+        int(round(float(np.mean(valid_ml_scores)))) if valid_ml_scores and ml_clf.is_loaded else None
+    )
+
+    if detection_mode == "ml" and overall_ml_liveness is not None:
+        overall_liveness = overall_ml_liveness
+    else:
+        overall_liveness = overall_baseline_liveness
+
     overall_band = get_band(overall_liveness)
     overall_band_label = get_band_label(overall_band)
 
@@ -152,6 +218,12 @@ def run_pipeline(
         "overall_liveness": overall_liveness,
         "overall_band": overall_band,
         "overall_band_label": overall_band_label,
+        "overall_baseline_liveness": overall_baseline_liveness,
+        "overall_ml_liveness": overall_ml_liveness,
+        "detection_mode": detection_mode,
+        "model_loaded": ml_clf.is_loaded,
+        "model_status": ml_clf.load_status,
+        "model_type": ml_clf.metadata.get("model_type"),
         "physics_mean": round(float(np.mean(valid_phys)), 3) if valid_phys else 0.5,
         "biology_mean": round(float(np.mean(valid_bio)), 3) if valid_bio else 0.5,
         "codec": codec,

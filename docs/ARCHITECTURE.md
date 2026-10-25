@@ -43,22 +43,27 @@ SonicShield is an acoustic AI-voice-clone and liveness detection prototype desig
   • Short-delay cepstral micro-reflections  • Jitter & Shimmer perturbation
   • Temporal room consistency               • Harmonics-to-Noise Ratio (HNR)
          │                                         │
-         └────────────────────┬────────────────────┘
+         ├────────────────────┬────────────────────┤
+         │                    │                    │
+         ▼                    ▼                    ▼
+[Confidence Scorer]   [ML Feature Vector]  [Supervised ML Model]
+  • Heuristic rule      (18-D Numeric)       (Scikit-Learn Pipeline)
+  • EMA smoothing       • SimpleImputer      • LogisticRegression
+  • Bands: G/A/R        • StandardScaler     • GradientBoosting
+         │                    │                    │
+         └────────────────────┼────────────────────┘
                               ▼
-                   [Confidence Scorer]
-  • Dual engine independent evaluation & ablation modes
-  • Exponential Moving Average (EMA) smoothing: α = 0.45
-  • Prototype Bands: Green (70-100), Amber (40-69), Red (0-39)
-  • Top 2 human-readable explanatory reasons
-  • Agent-assist follow-up verification prompt
+            [Multi-Mode Scoring Selector]
+            • baseline (Rule-Based Heuristic)
+            • ml (Trained Model Prediction)
+            • compare (Both Side-by-Side)
                               │
          ┌────────────────────┴────────────────────┐
          ▼                                         ▼
 [FastAPI Backend]                         [Streamlit Dashboard]
   • GET /health                             • Acoustic Liveness Gauge
-  • POST /analyze                           • Independent Sub-Meters
+  • POST /analyze                           • Side-by-Side ML Comparison
   • WS /stream (real-time chunks)           • Rolling Window Timeline
-                                            • Side-by-Side Comparison
 ```
 
 ---
@@ -80,15 +85,42 @@ Living human bodies leave involuntary physiological acoustic traces:
 
 ---
 
-## 4. Confidence Scorer & Fusion
+## 4. Supervised Machine Learning Subsystem
 
-The Scorer operates on normalized engine outputs:
-1. **Ablation Mode Support:** Can run in `both` (50/50 fusion), `physics` only, or `biology` only to demonstrate engine contributions.
-2. **Smoothing:** $S_t = \alpha \cdot \text{Raw}_t + (1 - \alpha) \cdot S_{t-1}$ to prevent erratic gauge jumping across 1-second rolling hops.
-3. **Calibrated Actionable Bands:**
-   - **Green (70–100):** Likely live human caller.
-   - **Amber (40–69):** Uncertain / ambiguous acoustic cues; agent follow-up recommended.
-   - **Red (0–39):** Suspicious / possible synthetic or replayed speech.
+The machine learning classifier (`src/ml_classifier.py`) evaluates windows through a trained scikit-learn pipeline:
+
+### 4.1 Fixed 18-Dimensional Feature Schema
+The feature vector maps the physical and biological properties into a fixed, immutable ordering:
+1. `phys_score`
+2. `phys_rms_db`
+3. `phys_decay_slope`
+4. `phys_reverb_score`
+5. `phys_pause_rms_db`
+6. `phys_spectral_flatness`
+7. `phys_is_digital_silence`
+8. `phys_cepstral_peak_ratio`
+9. `bio_score`
+10. `bio_breath_count`
+11. `bio_breaths_per_min`
+12. `bio_pitch_mean_hz`
+13. `bio_pitch_std_hz`
+14. `bio_tremor_ratio`
+15. `bio_jitter_local_percent`
+16. `bio_shimmer_local_percent`
+17. `bio_hnr_db`
+18. `bio_voiced_fraction`
+
+### 4.2 Pipeline Architecture
+```python
+Pipeline([
+    ("imputer", SimpleImputer(strategy="median")),
+    ("scaler", StandardScaler()),
+    ("clf", LogisticRegression(random_state=42, max_iter=1000, class_weight="balanced"))
+])
+```
+
+### 4.3 Zero-Leakage Speaker Grouping
+Training data is strictly split by unique **Speaker ID** (70% train, 15% validation, 15% test). No individual speaker appears across partitions.
 
 ---
 

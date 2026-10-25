@@ -1,4 +1,8 @@
-"""SonicShield Agent Assist Dashboard — Acoustic Liveness Intelligence."""
+"""SonicShield Agent Assist Dashboard — Acoustic Liveness Intelligence.
+
+Features real-time rule-based baseline scoring, genuine trained ML classifier scoring,
+and side-by-side comparison mode across rolling 6s windows.
+"""
 from __future__ import annotations
 
 import io
@@ -10,6 +14,7 @@ import streamlit as st
 
 from src.codec_crusher import get_supported_codecs
 from src.pipeline import run_pipeline, PipelineError
+from src.ml_classifier import get_ml_classifier
 
 # Page Configuration
 st.set_page_config(
@@ -19,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom High-End Cybersecurity Styling (Dark Navy, Teal/Cyan Glows, Monospace Accents)
+# Custom High-End Cybersecurity Styling
 CUSTOM_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -34,7 +39,6 @@ CUSTOM_CSS = """
         background: radial-gradient(circle at 15% 20%, #0d1933 0%, #070b14 75%);
     }
 
-    /* Headings & Brand */
     h1, h2, h3, h4 {
         font-family: 'Outfit', sans-serif;
         color: #FFFFFF;
@@ -55,6 +59,25 @@ CUSTOM_CSS = """
         margin-bottom: 8px;
     }
 
+    .model-status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+    .model-status-active {
+        background: rgba(0, 230, 118, 0.15);
+        border: 1px solid rgba(0, 230, 118, 0.4);
+        color: #00E676;
+    }
+    .model-status-unloaded {
+        background: rgba(148, 163, 184, 0.12);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        color: #94A3B8;
+    }
+
     .brand-title {
         font-size: 2.2rem;
         font-weight: 800;
@@ -72,7 +95,6 @@ CUSTOM_CSS = """
         line-height: 1.4;
     }
 
-    /* Cards */
     .metric-card {
         background: rgba(16, 26, 48, 0.7);
         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -124,7 +146,6 @@ CUSTOM_CSS = """
         font-style: italic;
     }
 
-    /* Sub-engine meter bars */
     .meter-container {
         margin-top: 10px;
         margin-bottom: 16px;
@@ -150,7 +171,6 @@ CUSTOM_CSS = """
         transition: width 0.5s ease;
     }
 
-    /* Honest limitation badge */
     .limits-footer {
         background: rgba(13, 21, 38, 0.6);
         border: 1px solid rgba(255, 255, 255, 0.05);
@@ -173,7 +193,7 @@ def audio_to_wav_bytes(audio: np.ndarray, sr: int = 8000) -> bytes:
     return buf.getvalue()
 
 # Gauge Chart Builder
-def render_gauge(score: int, band: str) -> go.Figure:
+def render_gauge(score: int, band: str, title: str = "") -> go.Figure:
     if band == "green":
         bar_color = "#00E676"
     elif band == "amber":
@@ -185,8 +205,9 @@ def render_gauge(score: int, band: str) -> go.Figure:
         go.Indicator(
             mode="gauge+number",
             value=score,
+            title={"text": title, "font": {"size": 14, "color": "#94A3B8"}} if title else None,
             domain={"x": [0, 1], "y": [0, 1]},
-            number={"suffix": "", "font": {"size": 48, "color": "#FFFFFF", "family": "Outfit"}},
+            number={"suffix": "", "font": {"size": 44, "color": "#FFFFFF", "family": "Outfit"}},
             gauge={
                 "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#475569", "ticks": "outside"},
                 "bar": {"color": bar_color, "thickness": 0.28},
@@ -208,17 +229,18 @@ def render_gauge(score: int, band: str) -> go.Figure:
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        height=220,
+        height=210,
         margin={"l": 20, "r": 20, "t": 25, "b": 10},
     )
     return fig
 
 # Score Timeline Chart Builder
-def render_timeline(windows: list[dict]) -> go.Figure:
+def render_timeline(windows: list[dict], show_ml: bool = False) -> go.Figure:
     t_vals = [w["t"] for w in windows]
-    liveness_vals = [w["liveness"] for w in windows]
+    baseline_vals = [w["baseline_score"] for w in windows]
     physics_vals = [w["physics"] * 100.0 for w in windows]
     biology_vals = [w["biology"] * 100.0 for w in windows]
+    ml_vals = [w.get("ml_score") for w in windows]
 
     fig = go.Figure()
 
@@ -238,7 +260,7 @@ def render_timeline(windows: list[dict]) -> go.Figure:
             y=physics_vals,
             mode="lines",
             name="Room & Echo (Physics)",
-            line={"color": "#38BDF8", "width": 2, "dash": "dot"},
+            line={"color": "#38BDF8", "width": 1.8, "dash": "dot"},
         )
     )
     fig.add_trace(
@@ -247,21 +269,34 @@ def render_timeline(windows: list[dict]) -> go.Figure:
             y=biology_vals,
             mode="lines",
             name="Breath & Voice (Biology)",
-            line={"color": "#C084FC", "width": 2, "dash": "dot"},
+            line={"color": "#C084FC", "width": 1.8, "dash": "dot"},
         )
     )
 
-    # Main Liveness Score Line
+    # Baseline Score Line
     fig.add_trace(
         go.Scatter(
             x=t_vals,
-            y=liveness_vals,
+            y=baseline_vals,
             mode="lines+markers",
-            name="Fused Liveness Score",
-            line={"color": "#00F2FE", "width": 3.5},
-            marker={"size": 7, "color": "#00F2FE", "symbol": "circle"},
+            name="Baseline Score (Rule-Based)",
+            line={"color": "#00F2FE", "width": 3.0},
+            marker={"size": 6, "color": "#00F2FE", "symbol": "circle"},
         )
     )
+
+    # ML Score Line (if available)
+    if show_ml and any(v is not None for v in ml_vals):
+        fig.add_trace(
+            go.Scatter(
+                x=t_vals,
+                y=[v if v is not None else np.nan for v in ml_vals],
+                mode="lines+markers",
+                name="ML Model Score",
+                line={"color": "#F59E0B", "width": 3.0, "dash": "dash"},
+                marker={"size": 6, "color": "#F59E0B", "symbol": "diamond"},
+            )
+        )
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -292,27 +327,53 @@ def render_timeline(windows: list[dict]) -> go.Figure:
     )
     return fig
 
+# Check ML Classifier Status
+ml_classifier = get_ml_classifier()
+supported_codecs = get_supported_codecs()
+
 # Top Header
 st.markdown('<div class="shield-badge">Acoustic Liveness Intelligence</div>', unsafe_allow_html=True)
-st.markdown('<h1 class="brand-title">SONICSHIELD</h1>', unsafe_allow_html=True)
+if ml_classifier.is_loaded:
+    model_name = ml_classifier.metadata.get("model_type", "Logistic Regression")
+    badge_html = f'<span class="model-status-badge model-status-active">● ML Active: {model_name}</span>'
+else:
+    badge_html = '<span class="model-status-badge model-status-unloaded">○ ML Model Unloaded (Baseline Active)</span>'
+
+st.markdown(f'<h1 class="brand-title">SONICSHIELD {badge_html}</h1>', unsafe_allow_html=True)
 st.markdown(
     '<p class="brand-caption">'
     'Zero-friction acoustic deepfake & liveness detection prototype. Inspects micro-room reverberation tails, '
-    'pause room tone, and involuntary biological vocal dynamics under telephony-codec conditions.'
+    'pause room tone, and involuntary biological vocal dynamics under telephone-codec conditions.'
     '</p>',
     unsafe_allow_html=True,
 )
 st.markdown("<hr style='border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 18px 0;'>", unsafe_allow_html=True)
 
 # Sidebar: Controls & Codec Selection
-supported_codecs = get_supported_codecs()
-
 with st.sidebar:
-    st.markdown("### ⚙️ Analysis Settings")
-    
+    st.markdown("### ⚙️ Scoring & Detection")
+
+    detection_mode = st.radio(
+        "Detection Engine",
+        options=["baseline", "ml", "compare"],
+        format_func=lambda x: {
+            "baseline": "Rule-Based Baseline",
+            "ml": "Trained ML Model",
+            "compare": "Compare Both (Side-by-Side)",
+        }[x],
+        index=0,
+        help="Choose whether to use the transparent rule-based heuristic baseline, the trained ML classifier, or compare both.",
+    )
+
+    if detection_mode in ("ml", "compare") and not ml_classifier.is_loaded:
+        st.info("ℹ️ *ML model not yet loaded. Baseline will serve as primary score. Train with `python scripts/train_ml_model.py`.*")
+
+    st.markdown("---")
+    st.markdown("### 🎙️ Audio & Codec")
+
     # Mode selection (Ablation support)
     analysis_mode = st.selectbox(
-        "Analysis Mode (Ablation)",
+        "Engine Ablation",
         options=["both", "physics", "biology"],
         format_func=lambda x: {
             "both": "Combined (Physics + Biology)",
@@ -342,7 +403,7 @@ with st.sidebar:
     if not supported_codecs["amr"]:
         st.caption("ℹ️ *AMR-NB requires FFmpeg with libopencore-amrnb. G.711 μ-law native is fully active.*")
 
-    # Network impairment toggles (optional P1 feature)
+    # Network impairment toggles
     with st.expander("Line Impairments (Optional)"):
         packet_loss = st.slider("VoIP Packet Loss Rate", 0.0, 0.15, 0.0, 0.01, format="%.2f")
         add_noise = st.checkbox("Add Telephone Line Hiss", value=False)
@@ -400,6 +461,7 @@ with tab_live:
                         file_source=audio_source,
                         codec=selected_codec,
                         mode=analysis_mode,
+                        detection_mode=detection_mode,
                         packet_loss_rate=packet_loss,
                         line_noise_snr=noise_snr,
                     )
@@ -416,31 +478,62 @@ with tab_live:
         score = res["overall_liveness"]
         band = res["overall_band"]
         band_label = res["overall_band_label"]
+        active_mode = res.get("detection_mode", "baseline")
 
         # Display any warnings
         if res.get("warnings"):
             for w in res["warnings"]:
                 st.warning(f"⚠️ {w}")
 
-        st.markdown(f"#### 🔍 Live Inspection: `{lbl}` &nbsp;|&nbsp; Codec: `{res['codec'].upper()}`")
+        st.markdown(
+            f"#### 🔍 Live Inspection: `{lbl}` &nbsp;|&nbsp; "
+            f"Codec: `{res['codec'].upper()}` &nbsp;|&nbsp; "
+            f"Mode: `{active_mode.upper()}`"
+        )
 
-        # Top Metric Row: Gauge, Sub-meters, and Reasons
-        col_gauge, col_meters, col_reasons = st.columns([1.1, 1.2, 1.7])
+        # Top Metric Row
+        if active_mode == "compare":
+            # Compare mode: show both Baseline and ML gauges side-by-side
+            col_g1, col_g2, col_meters, col_reasons = st.columns([1, 1, 1.2, 1.6])
 
-        with col_gauge:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown('<div class="card-label">Acoustic Liveness Score</div>', unsafe_allow_html=True)
-            st.plotly_chart(render_gauge(score, band), use_container_width=True, config={"displayModeBar": False})
-            
-            # Status Badge
-            badge_color = "#00E676" if band == "green" else ("#FFD600" if band == "amber" else "#FF5252")
-            st.markdown(
-                f"<div style='text-align:center; font-weight:700; color:{badge_color}; font-size:1.05rem; margin-top:-15px;'>"
-                f"{band_label}"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
+            with col_g1:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.markdown('<div class="card-label">Rule-Based Baseline</div>', unsafe_allow_html=True)
+                base_score = res["overall_baseline_liveness"]
+                st.plotly_chart(render_gauge(base_score, res["overall_band"]), use_container_width=True, config={"displayModeBar": False})
+                st.markdown(f"<div style='text-align:center; font-weight:700;'>{base_score} / 100</div>", unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with col_g2:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.markdown('<div class="card-label">Trained ML Model</div>', unsafe_allow_html=True)
+                if res.get("overall_ml_liveness") is not None:
+                    ml_s = res["overall_ml_liveness"]
+                    ml_b = "green" if ml_s >= 70 else ("amber" if ml_s >= 40 else "red")
+                    st.plotly_chart(render_gauge(ml_s, ml_b), use_container_width=True, config={"displayModeBar": False})
+                    st.markdown(f"<div style='text-align:center; font-weight:700;'>{ml_s} / 100</div>", unsafe_allow_html=True)
+                else:
+                    st.info("Model not loaded. Train with `python scripts/train_ml_model.py`.")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+        else:
+            col_gauge, col_meters, col_reasons = st.columns([1.1, 1.2, 1.7])
+
+            with col_gauge:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                label_txt = "Acoustic Liveness Score (Baseline)" if active_mode == "baseline" else "ML-Derived Liveness Score"
+                st.markdown(f'<div class="card-label">{label_txt}</div>', unsafe_allow_html=True)
+                st.plotly_chart(render_gauge(score, band), use_container_width=True, config={"displayModeBar": False})
+                
+                # Status Badge
+                badge_color = "#00E676" if band == "green" else ("#FFD600" if band == "amber" else "#FF5252")
+                st.markdown(
+                    f"<div style='text-align:center; font-weight:700; color:{badge_color}; font-size:1.05rem; margin-top:-15px;'>"
+                    f"{band_label}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
 
         with col_meters:
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -513,7 +606,8 @@ with tab_live:
         # Timeline Chart Row
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.markdown('<div class="card-label">Rolling Analysis Timeline (6s Windows @ 1s Hop)</div>', unsafe_allow_html=True)
-        st.plotly_chart(render_timeline(res["windows"]), use_container_width=True, config={"displayModeBar": False})
+        show_ml_line = (active_mode in ("ml", "compare") or res.get("overall_ml_liveness") is not None)
+        st.plotly_chart(render_timeline(res["windows"], show_ml=show_ml_line), use_container_width=True, config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
         # Audio Playback
@@ -564,15 +658,18 @@ with tab_compare:
 
     if cmp_btn and src_a and src_b:
         with st.spinner("Analyzing both recordings..."):
-            res_a = run_pipeline(src_a, codec=selected_codec, mode=analysis_mode)
-            res_b = run_pipeline(src_b, codec=selected_codec, mode=analysis_mode)
+            res_a = run_pipeline(src_a, codec=selected_codec, mode=analysis_mode, detection_mode=detection_mode)
+            res_b = run_pipeline(src_b, codec=selected_codec, mode=analysis_mode, detection_mode=detection_mode)
 
             st.markdown("---")
             col_res_a, col_res_b = st.columns(2)
 
             with col_res_a:
-                st.markdown(f"### Recording A Result: **{res_a['overall_liveness']} / 100**")
+                st.markdown(f"### Recording A: **{res_a['overall_liveness']} / 100**")
                 st.plotly_chart(render_gauge(res_a["overall_liveness"], res_a["overall_band"]), use_container_width=True)
+                st.markdown(f"• **Baseline Score:** `{res_a['overall_baseline_liveness']}`")
+                if res_a.get("overall_ml_liveness") is not None:
+                    st.markdown(f"• **ML Model Score:** `{res_a['overall_ml_liveness']}`")
                 st.markdown(f"• **Room & Echo (Physics):** `{int(res_a['physics_mean']*100)}%`")
                 st.markdown(f"• **Breath & Voice (Biology):** `{int(res_a['biology_mean']*100)}%`")
                 st.markdown("**Top Reasons:**")
@@ -580,25 +677,29 @@ with tab_compare:
                     st.markdown(f"- {r}")
 
             with col_res_b:
-                st.markdown(f"### Recording B Result: **{res_b['overall_liveness']} / 100**")
+                st.markdown(f"### Recording B: **{res_b['overall_liveness']} / 100**")
                 st.plotly_chart(render_gauge(res_b["overall_liveness"], res_b["overall_band"]), use_container_width=True)
+                st.markdown(f"• **Baseline Score:** `{res_b['overall_baseline_liveness']}`")
+                if res_b.get("overall_ml_liveness") is not None:
+                    st.markdown(f"• **ML Model Score:** `{res_b['overall_ml_liveness']}`")
                 st.markdown(f"• **Room & Echo (Physics):** `{int(res_b['physics_mean']*100)}%`")
                 st.markdown(f"• **Breath & Voice (Biology):** `{int(res_b['biology_mean']*100)}%`")
                 st.markdown("**Top Reasons:**")
                 for r in res_b["reasons"]:
                     st.markdown(f"- {r}")
 
-# Honest Limitations Footer (Mandatory Hackathon Transparency)
+# Honest Limitations Footer
 st.markdown(
     """
     <div class="limits-footer">
         <strong>⚠️ Experimental Prototype Limitations & Ethical Notice:</strong>
         <br>
-        SonicShield evaluates acoustic indicators (room reverberation tails, ambient pause noise floor, and vocal perturbation). 
-        These features can naturally overlap between genuine human callers and synthetic audio. Quiet acoustic environments, 
-        studio noise gates, speaker headsets, or voice compression may lower scores. Conversely, replayed synthetic audio played 
-        through an external speaker may capture genuine physical room reflections. A liveness score does <strong>not</strong> constitute 
-        definitive proof of identity or fraud. All scores are experimental indicators designed to guide neutral conversational human verification.
+        SonicShield evaluates acoustic indicators (room reverberation tails, ambient pause noise floor, and vocal perturbation) 
+        using transparent rule-based heuristics and optional supervised machine-learning models. These features can naturally overlap 
+        between genuine human callers and synthetic audio. Quiet acoustic environments, studio noise gates, speaker headsets, or voice compression 
+        may lower scores. Conversely, replayed synthetic audio played through an external speaker may capture genuine physical room reflections. 
+        A liveness score does <strong>not</strong> constitute definitive proof of identity or fraud. All scores are experimental indicators 
+        designed to guide neutral conversational human verification.
     </div>
     """,
     unsafe_allow_html=True,

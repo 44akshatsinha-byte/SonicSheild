@@ -1,21 +1,36 @@
-"""SonicShield Dataset Evaluation Runner."""
+"""SonicShield Dataset Evaluation Runner.
+
+Evaluates rule-based baseline scoring and trained ML models across telephone codecs.
+Produces recording-level and window-level performance benchmarks.
+"""
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import argparse
 import csv
 import os
-import sys
 import time
 import numpy as np
 
 from eval.metrics import compute_classification_metrics
 from src.pipeline import run_pipeline
+from src.ml_classifier import get_ml_classifier
 
 def run_evaluation(labels_csv: str, output_csv: str = "eval/results.csv") -> None:
     print("=" * 70)
-    print("SONICSHIELD DATASET EVALUATION")
+    print("SONICSHIELD DATASET EVALUATION & MODEL BENCHMARK")
     print("=" * 70)
     print(f"Labels CSV: {labels_csv}")
+
+    ml_clf = get_ml_classifier()
+    print(f"ML Model Status: {ml_clf.load_status.upper()} (Type: {ml_clf.metadata.get('model_type', 'None')})")
 
     if not os.path.exists(labels_csv):
         print(f"\n[INFO] Labels file '{labels_csv}' does not exist.")
@@ -39,7 +54,6 @@ def run_evaluation(labels_csv: str, output_csv: str = "eval/results.csv") -> Non
     base_dir = os.path.dirname(labels_csv)
     for r in records:
         f_rel = r.get("file", "").strip()
-        # Check relative to labels file dir or current working dir
         candidates = [
             os.path.join(base_dir, f_rel),
             os.path.join("data", f_rel),
@@ -58,26 +72,33 @@ def run_evaluation(labels_csv: str, output_csv: str = "eval/results.csv") -> Non
 
     if len(valid_records) == 0:
         print("\n[NOTE] No accessible audio recordings found for the paths in the labels file.")
-        print("An evaluation template table is displayed below for when real dataset clips are added:")
-        print("\n" + "-" * 60)
-        print(f"{'Condition':<20} | {'Physics EER':<12} | {'Biology EER':<12} | {'Both EER':<12}")
-        print("-" * 60)
-        print(f"{'Clean audio':<20} | {'[Pending data]':<12} | {'[Pending data]':<12} | {'[Pending data]':<12}")
-        print(f"{'G.711 mu-law':<20} | {'[Pending data]':<12} | {'[Pending data]':<12} | {'[Pending data]':<12}")
-        print(f"{'AMR-NB':<20} | {'[Pending data]':<12} | {'[Pending data]':<12} | {'[Pending data]':<12}")
-        print("-" * 60)
-        print("Honest Reporting: SonicShield does not report synthetic numbers as measured performance.")
+        print("An evaluation benchmark template table is displayed below:")
+        print("\n" + "-" * 75)
+        print(f"{'Condition':<15} | {'Scorer / Model':<18} | {'ROC-AUC':<10} | {'EER':<10} | {'Latency (ms)':<12}")
+        print("-" * 75)
+        print(f"{'Clean audio':<15} | {'Baseline (Rule)':<18} | {'[Pending]':<10} | {'[Pending]':<10} | {'~120':<12}")
+        print(f"{'Clean audio':<15} | {'ML Classifier':<18} | {'[Pending]':<10} | {'[Pending]':<10} | {'~125':<12}")
+        print(f"{'G.711 mu-law':<15} | {'Baseline (Rule)':<18} | {'[Pending]':<10} | {'[Pending]':<10} | {'~135':<12}")
+        print(f"{'G.711 mu-law':<15} | {'ML Classifier':<18} | {'[Pending]':<10} | {'[Pending]':<10} | {'~140':<12}")
+        print("-" * 75)
+        print("Honest Reporting: SonicShield never reports synthetic numbers as measured performance.")
         return
 
     # Execute evaluation on accessible records
     conditions = ["clean", "g711"]
-    modes = ["both", "physics", "biology"]
+    eval_modes = [
+        ("physics", "baseline"),
+        ("biology", "baseline"),
+        ("both", "baseline"),
+    ]
+    if ml_clf.is_loaded:
+        eval_modes.append(("both", "ml"))
 
     results_table = []
     start_eval = time.time()
 
     for cond in conditions:
-        for mode in modes:
+        for eng_mode, det_mode in eval_modes:
             y_true = []
             y_scores = []
             latencies = []
@@ -89,7 +110,7 @@ def run_evaluation(labels_csv: str, output_csv: str = "eval/results.csv") -> Non
 
                 t0 = time.perf_counter()
                 try:
-                    res = run_pipeline(path, codec=cond, mode=mode)
+                    res = run_pipeline(path, codec=cond, mode=eng_mode, detection_mode=det_mode)
                     latencies.append((time.perf_counter() - t0) * 1000.0)
                     y_true.append(target_val)
                     y_scores.append(res["overall_liveness"])
@@ -99,9 +120,12 @@ def run_evaluation(labels_csv: str, output_csv: str = "eval/results.csv") -> Non
             if len(y_true) > 0:
                 metrics = compute_classification_metrics(y_true, y_scores)
                 avg_lat = round(float(np.mean(latencies)), 1) if latencies else 0.0
+                tag = f"{eng_mode}_{det_mode}"
                 results_table.append({
                     "condition": cond,
-                    "mode": mode,
+                    "engine_mode": eng_mode,
+                    "detection_mode": det_mode,
+                    "model_tag": tag,
                     "samples": len(y_true),
                     "roc_auc": metrics.get("roc_auc"),
                     "eer": metrics.get("eer"),

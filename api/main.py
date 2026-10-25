@@ -14,11 +14,13 @@ from src.pipeline import run_pipeline, PipelineError
 from src.physics_engine import analyze as analyze_physics
 from src.biology_engine import analyze as analyze_biology
 from src.scorer import score_window
+from src.ml_features import extract_features
+from src.ml_classifier import get_ml_classifier
 
 app = FastAPI(
     title="SonicShield API",
-    description="Zero-Friction Acoustic Liveness Detection Backend",
-    version="0.1.0",
+    description="Zero-Friction Acoustic Liveness Detection Backend with Supervised ML",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -31,13 +33,21 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    """Returns runtime health status and codec availability."""
+    """Returns runtime health status, codec availability, and ML model status."""
+    ml_clf = get_ml_classifier()
     return {
         "status": "healthy",
         "service": "SonicShield Acoustic Liveness Detection",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "timestamp": time.time(),
         "supported_codecs": get_supported_codecs(),
+        "supported_detection_modes": ["baseline", "ml", "compare"],
+        "ml_model": {
+            "loaded": ml_clf.is_loaded,
+            "status": ml_clf.load_status,
+            "type": ml_clf.metadata.get("model_type"),
+            "features_expected": len(ml_clf.metadata.get("feature_names", [])),
+        },
         "window_duration_sec": 6.0,
         "hop_duration_sec": 1.0,
         "sample_rate_hz": 8000,
@@ -47,7 +57,8 @@ def health_check():
 async def analyze_audio(
     file: UploadFile = File(..., description="WAV audio file to inspect"),
     codec: str = Query("clean", description="Codec simulation: 'clean', 'g711', or 'amr'"),
-    mode: str = Query("both", description="Ablation mode: 'both', 'physics', or 'biology'"),
+    mode: str = Query("both", description="Engine ablation: 'both', 'physics', or 'biology'"),
+    detection_mode: str = Query("baseline", description="Scoring mode: 'baseline', 'ml', or 'compare'"),
     packet_loss_rate: float = Query(0.0, ge=0.0, le=0.5, description="Simulated packet loss rate"),
     line_noise_snr: float | None = Query(None, description="Simulated line noise SNR in dB"),
 ):
@@ -73,6 +84,7 @@ async def analyze_audio(
             file_source=content,
             codec=codec,
             mode=mode,
+            detection_mode=detection_mode,
             packet_loss_rate=packet_loss_rate,
             line_noise_snr=line_noise_snr,
         )
@@ -95,7 +107,7 @@ async def stream_audio(websocket: WebSocket):
     
     Expects 1-second chunks of raw 16-bit PCM (8000 Hz mono = 16,000 bytes)
     or float32 audio arrays. Maintains a rolling 6-second window buffer.
-    Pushes back 1 JSON result per second.
+    Pushes back 1 JSON result per second with both baseline and ML scores.
     """
     await websocket.accept()
     buffer: list[float] = []
@@ -104,6 +116,7 @@ async def stream_audio(websocket: WebSocket):
     hop_samples = 1 * sr     # 8,000 samples (1s)
     current_time_sec = 0.0
     history: list[dict] = []
+    ml_clf = get_ml_classifier()
 
     try:
         while True:
@@ -120,15 +133,22 @@ async def stream_audio(websocket: WebSocket):
             while len(buffer) >= window_samples:
                 window_slice = np.array(buffer[:window_samples], dtype=np.float32)
                 
-                # Analyze window
+                # Analyze window with physics & biology engines
                 phys_res = analyze_physics(window_slice, sr=sr)
                 bio_res = analyze_biology(window_slice, sr=sr)
                 scored = score_window(phys_res, bio_res, history=history, mode="both")
                 history.append(scored)
 
+                # ML feature extraction & prediction
+                feat_vec, _, _ = extract_features(phys_res, bio_res, window_audio=window_slice, sr=sr)
+                ml_res = ml_clf.predict_window(feat_vec)
+
                 update_msg = {
                     "t": round(current_time_sec, 1),
                     "liveness": scored["liveness"],
+                    "baseline_liveness": scored["liveness"],
+                    "ml_liveness": ml_res["ml_score"],
+                    "ml_status": ml_res["status"],
                     "band": scored["band"],
                     "band_label": scored["band_label"],
                     "physics": scored["physics"],

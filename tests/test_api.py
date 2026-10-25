@@ -16,6 +16,9 @@ def test_health_endpoint():
     assert "supported_codecs" in data
     assert data["supported_codecs"]["clean"] is True
     assert data["supported_codecs"]["g711"] is True
+    assert "ml_model" in data
+    assert "supported_detection_modes" in data
+    assert "compare" in data["supported_detection_modes"]
 
 def test_analyze_endpoint_success():
     filepath = os.path.join(SMOKE_DIR, "smoke_human_like.wav")
@@ -23,7 +26,7 @@ def test_analyze_endpoint_success():
 
     with open(filepath, "rb") as f:
         response = client.post(
-            "/analyze?codec=g711&mode=both",
+            "/analyze?codec=g711&mode=both&detection_mode=compare",
             files={"file": ("test.wav", f, "audio/wav")},
         )
     assert response.status_code == 200
@@ -31,8 +34,11 @@ def test_analyze_endpoint_success():
     assert "overall_liveness" in data
     assert 0 <= data["overall_liveness"] <= 100
     assert data["codec"] == "g711"
+    assert data["detection_mode"] == "compare"
+    assert "overall_baseline_liveness" in data
     assert "windows" in data
     assert len(data["windows"]) >= 2
+    assert "baseline_score" in data["windows"][0]
 
 def test_analyze_endpoint_empty_file():
     empty_file = io.BytesIO(b"")
