@@ -16,11 +16,12 @@ from src.biology_engine import analyze as analyze_biology
 from src.scorer import score_window
 from src.ml_features import extract_features
 from src.ml_classifier import get_ml_classifier
+from src.pretrained_aasist import get_aasist_classifier
 
 app = FastAPI(
     title="SonicShield API",
-    description="Zero-Friction Acoustic Liveness Detection Backend with Supervised ML",
-    version="0.2.0",
+    description="Zero-Friction Acoustic Liveness Detection Backend with Supervised ML and Pretrained AASIST",
+    version="0.3.0",
 )
 
 app.add_middleware(
@@ -33,20 +34,28 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    """Returns runtime health status, codec availability, and ML model status."""
+    """Returns runtime health status, codec availability, ML model status, and AASIST status."""
     ml_clf = get_ml_classifier()
+    aasist_clf = get_aasist_classifier()
     return {
         "status": "healthy",
         "service": "SonicShield Acoustic Liveness Detection",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "timestamp": time.time(),
         "supported_codecs": get_supported_codecs(),
-        "supported_detection_modes": ["baseline", "ml", "compare"],
+        "supported_detection_modes": ["baseline", "ml", "pretrained", "compare"],
         "ml_model": {
             "loaded": ml_clf.is_loaded,
             "status": ml_clf.load_status,
             "type": ml_clf.metadata.get("model_type"),
             "features_expected": len(ml_clf.metadata.get("feature_names", [])),
+        },
+        "aasist_model": {
+            "loaded": aasist_clf.is_loaded,
+            "status": aasist_clf.load_status,
+            "architecture": "AASIST",
+            "checkpoint_path": aasist_clf.checkpoint_path,
+            "error": aasist_clf.load_error,
         },
         "window_duration_sec": 6.0,
         "hop_duration_sec": 1.0,
@@ -58,7 +67,7 @@ async def analyze_audio(
     file: UploadFile = File(..., description="WAV audio file to inspect"),
     codec: str = Query("clean", description="Codec simulation: 'clean', 'g711', or 'amr'"),
     mode: str = Query("both", description="Engine ablation: 'both', 'physics', or 'biology'"),
-    detection_mode: str = Query("baseline", description="Scoring mode: 'baseline', 'ml', or 'compare'"),
+    detection_mode: str = Query("baseline", description="Scoring mode: 'baseline', 'ml', 'pretrained' (AASIST), or 'compare'"),
     packet_loss_rate: float = Query(0.0, ge=0.0, le=0.5, description="Simulated packet loss rate"),
     line_noise_snr: float | None = Query(None, description="Simulated line noise SNR in dB"),
 ):
@@ -117,6 +126,7 @@ async def stream_audio(websocket: WebSocket):
     current_time_sec = 0.0
     history: list[dict] = []
     ml_clf = get_ml_classifier()
+    aasist_clf = get_aasist_classifier()
 
     try:
         while True:
@@ -143,12 +153,18 @@ async def stream_audio(websocket: WebSocket):
                 feat_vec, _, _ = extract_features(phys_res, bio_res, window_audio=window_slice, sr=sr)
                 ml_res = ml_clf.predict_window(feat_vec)
 
+                # Pretrained AASIST inference
+                aasist_win = aasist_clf.predict(window_slice, sr=sr)
+
                 update_msg = {
                     "t": round(current_time_sec, 1),
                     "liveness": scored["liveness"],
                     "baseline_liveness": scored["liveness"],
                     "ml_liveness": ml_res["ml_score"],
                     "ml_status": ml_res["status"],
+                    "aasist_liveness": aasist_win["liveness_score"],
+                    "aasist_bona_fide": aasist_win["bona_fide_score"],
+                    "aasist_class": aasist_win["predicted_class"],
                     "band": scored["band"],
                     "band_label": scored["band_label"],
                     "physics": scored["physics"],

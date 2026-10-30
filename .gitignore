@@ -43,6 +43,10 @@ data/phone/amr/*
 *.amr
 !data/smoke/*.wav
 
+# Trained Models
+models/trained/*
+!models/trained/.gitkeep
+
 # IDE & OS
 .vscode/
 .idea/

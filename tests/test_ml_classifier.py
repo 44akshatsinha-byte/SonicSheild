@@ -7,7 +7,6 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
 
 from src.ml_features import FEATURE_NAMES
 from src.ml_classifier import SonicShieldMLClassifier
@@ -37,7 +36,6 @@ def test_ml_classifier_with_mock_trained_pipeline():
         y = np.array([0] * 20 + [1] * 20)
 
         pipe = Pipeline([
-            ("imputer", SimpleImputer(strategy="median")),
             ("scaler", StandardScaler()),
             ("clf", LogisticRegression(random_state=42)),
         ])

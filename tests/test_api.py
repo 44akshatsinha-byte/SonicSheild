@@ -17,7 +17,10 @@ def test_health_endpoint():
     assert data["supported_codecs"]["clean"] is True
     assert data["supported_codecs"]["g711"] is True
     assert "ml_model" in data
+    assert "aasist_model" in data
+    assert data["aasist_model"]["architecture"] == "AASIST"
     assert "supported_detection_modes" in data
+    assert "pretrained" in data["supported_detection_modes"]
     assert "compare" in data["supported_detection_modes"]
 
 def test_analyze_endpoint_success():
@@ -36,9 +39,28 @@ def test_analyze_endpoint_success():
     assert data["codec"] == "g711"
     assert data["detection_mode"] == "compare"
     assert "overall_baseline_liveness" in data
+    assert "overall_aasist_liveness" in data
+    assert "aasist" in data
     assert "windows" in data
     assert len(data["windows"]) >= 2
     assert "baseline_score" in data["windows"][0]
+    assert "aasist_score" in data["windows"][0]
+
+def test_analyze_endpoint_pretrained_mode():
+    filepath = os.path.join(SMOKE_DIR, "smoke_synthetic_like.wav")
+    assert os.path.exists(filepath)
+
+    with open(filepath, "rb") as f:
+        response = client.post(
+            "/analyze?codec=clean&mode=both&detection_mode=pretrained",
+            files={"file": ("synth.wav", f, "audio/wav")},
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["detection_mode"] == "pretrained"
+    assert "overall_aasist_class" in data
+    assert "overall_aasist_bona_fide_score" in data
+    assert data["overall_aasist_class"] in ("bona_fide", "spoof")
 
 def test_analyze_endpoint_empty_file():
     empty_file = io.BytesIO(b"")
