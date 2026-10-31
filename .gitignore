@@ -38,6 +38,7 @@ data/phone/g711/*
 !data/phone/g711/.gitkeep
 data/phone/amr/*
 !data/phone/amr/.gitkeep
+data/external/
 *.wav
 *.mp3
 *.amr

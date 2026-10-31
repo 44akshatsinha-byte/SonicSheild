@@ -1,0 +1,6 @@
+Engine / System,Accuracy,Bona-fide Precision,Bona-fide Recall,Bona-fide F1,Spoof Precision,Spoof Recall,Spoof F1,Macro F1,TP (Live),TN (Spoof),FP (Fake as Live),FN (Live as Fake),ROC-AUC,EER,EER Optimal Threshold
+Physics Engine,0.46,0.3824,0.13,0.194,0.4759,0.79,0.594,0.394,13,79,21,87,0.4736,0.525,0.3484
+Biology Engine,0.535,0.5183,0.99,0.6804,0.8889,0.08,0.1468,0.4136,99,8,92,1,0.5545,0.495,0.63
+Pretrained AASIST,0.565,0.5461,0.77,0.639,0.6102,0.36,0.4528,0.5459,77,36,64,23,0.6225,0.44,0.9436
+Combined Baseline (Phys + Bio),0.46,0.4524,0.38,0.413,0.4655,0.54,0.5,0.4565,38,54,46,62,0.4852,0.545,0.4825
+Combined Multi-Engine Hybrid,0.575,0.5524,0.79,0.6502,0.6316,0.36,0.4586,0.5544,79,36,64,21,0.5712,0.465,0.7218

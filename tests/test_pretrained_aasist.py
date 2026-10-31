@@ -125,3 +125,73 @@ def test_pipeline_with_aasist_compare_mode():
     assert "overall_aasist_liveness" in res
     assert "overall_ml_liveness" in res
     assert res["overall_liveness"] == res["overall_baseline_liveness"]
+
+
+def test_failed_aasist_does_not_break_baseline(monkeypatch):
+    """Verify that an exception in AASIST analysis does not break baseline execution."""
+    smoke_wav = os.path.join("data", "smoke", "smoke_human_like.wav")
+    if not os.path.exists(smoke_wav):
+        pytest.skip("Smoke sample not found.")
+
+    clf = get_aasist_classifier()
+
+    def mock_predict_failure(*args, **kwargs):
+        raise RuntimeError("Simulated AASIST GPU memory or device error")
+
+    monkeypatch.setattr(clf, "predict", mock_predict_failure)
+
+    # In baseline mode
+    res_base = run_pipeline(smoke_wav, detection_mode="baseline")
+    assert res_base["overall_liveness"] is not None
+    assert 0 <= res_base["overall_liveness"] <= 100
+    assert res_base["overall_baseline_liveness"] is not None
+
+    # In compare mode
+    res_cmp = run_pipeline(smoke_wav, detection_mode="compare")
+    assert res_cmp["overall_baseline_liveness"] is not None
+    assert 0 <= res_cmp["overall_baseline_liveness"] <= 100
+    assert res_cmp["overall_aasist_liveness"] is None
+
+    # In pretrained mode (graceful fallback to baseline)
+    res_pre = run_pipeline(smoke_wav, detection_mode="pretrained")
+    assert res_pre["overall_liveness"] == res_pre["overall_baseline_liveness"]
+    assert any("fell back to rule-based baseline" in w for w in res_pre["warnings"])
+
+
+def test_compare_mode_without_trained_ml_model(monkeypatch):
+    """Verify baseline-versus-AASIST comparison works when ML model is not loaded."""
+    from src.ml_classifier import get_ml_classifier
+    ml_clf = get_ml_classifier()
+    monkeypatch.setattr(ml_clf, "is_loaded", False)
+
+    smoke_wav = os.path.join("data", "smoke", "smoke_human_like.wav")
+    if not os.path.exists(smoke_wav):
+        pytest.skip("Smoke sample not found.")
+
+    res = run_pipeline(smoke_wav, detection_mode="compare")
+    assert res["detection_mode"] == "compare"
+    assert res["overall_baseline_liveness"] is not None
+    assert res["overall_ml_liveness"] is None
+    # Pretrained AASIST is loaded
+    if res["aasist_model_loaded"]:
+        assert res["overall_aasist_liveness"] is not None
+        assert res["overall_aasist_class"] in ("bona_fide", "spoof")
+
+
+def test_actual_wav_recording():
+    """Verify pipeline execution on actual recorded speech from the in-the-wild dataset."""
+    actual_wav = os.path.join(
+        "data", "external", "in_the_wild", "release_in_the_wild", "release_in_the_wild", "4.wav"
+    )
+    if not os.path.exists(actual_wav):
+        pytest.skip("Actual external WAV dataset not present.")
+
+    res = run_pipeline(actual_wav, codec="g711", detection_mode="compare")
+    assert res["duration_sec"] > 0
+    assert res["num_windows"] >= 1
+    assert 0 <= res["overall_baseline_liveness"] <= 100
+    assert res["overall_band"] in ("green", "amber", "red")
+    if res["aasist_model_loaded"]:
+        assert res["overall_aasist_class"] in ("bona_fide", "spoof")
+        assert 0.0 <= res["overall_aasist_bona_fide_score"] <= 1.0
+

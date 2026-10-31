@@ -620,7 +620,7 @@ class PretrainedAASIST:
                 _, logits = self.model(tensor_input)  # (1, 2)
                 raw_logits = logits[0].cpu().numpy().tolist()  # [spoof_logit, bona_fide_logit]
 
-                # Softmax normalized probabilities
+                # Softmax normalized scores (uncalibrated)
                 probs = F.softmax(logits, dim=-1)[0].cpu().numpy()
                 prob_spoof = float(probs[0])
                 prob_bonafide = float(probs[1])

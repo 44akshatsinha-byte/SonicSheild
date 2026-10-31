@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SonicShield · Acoustic Liveness Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@125,500;125,700;150,700;150,800&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body>
+  <div class="noise" id="noise"></div>
+
+  <header class="site-header">
+    <div class="logo-bar">
+      <a class="brand" href="#home" data-view="home" aria-label="SonicShield home">
+        <svg viewBox="0 0 120 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="6" width="8" height="24" fill="#101010"/>
+          <rect x="14" y="2" width="8" height="32" fill="#101010"/>
+          <rect x="28" y="10" width="8" height="16" fill="#101010"/>
+          <path d="M52 6H78C86 6 92 12 92 18C92 24 86 30 78 30H62V24H76C80 24 82 22 82 18C82 14 80 12 76 12H52V6Z" fill="#101010"/>
+        </svg>
+      </a>
+      <button class="menu-btn" id="menuOpen" aria-label="Open menu"><span></span></button>
+    </div>
+    <div class="crumb-row">
+      <div class="crumb-home">Home</div>
+      <div class="crumb-section" id="crumbSection">Welcome</div>
+      <div></div>
+    </div>
+  </header>
+
+  <div class="clock" id="clock"></div>
+
+  <nav class="nav-overlay" id="nav">
+    <button class="nav-close" id="menuClose">Close</button>
+    <div class="nav-grid">
+      <div class="nav-col">
+        <h5>Home</h5>
+        <button data-view="home" data-scroll="welcome">Welcome</button>
+        <button data-view="home" data-scroll="highlights">Highlights</button>
+        <button data-view="home" data-scroll="expertise">Expertise</button>
+        <button data-view="home" data-scroll="methodology">Methodology</button>
+      </div>
+      <div class="nav-col">
+        <h5>Platform</h5>
+        <button data-view="analyze">Analyze Audio</button>
+        <button data-view="insights">Engine Insights</button>
+        <button data-view="evaluation">Dataset Evaluation</button>
+        <button data-view="history">Analysis History</button>
+      </div>
+      <div class="nav-col">
+        <h5>System</h5>
+        <p id="navHealth">Checking API…</p>
+        <p>v0.3.0 · 8 kHz telephony</p>
+        <p>Physics · Biology · AASIST · ML</p>
+      </div>
+    </div>
+  </nav>
+
+  <main id="view-home" class="view active">
+    <section class="hero" id="welcome">
+      <canvas id="flow-canvas"></canvas>
+      <div class="hero-copy">
+        <div class="hero-label">Zero-friction acoustic liveness</div>
+        <h1 class="display split">Trust the voice. Verify the signal.</h1>
+        <p class="hero-lede">SonicShield inspects telephone-quality audio through room physics, vocal biology, and a pretrained anti-spoofing network — without forcing the caller to repeat a phrase.</p>
+      </div>
+    </section>
+
+    <section class="section section-pad" id="intro">
+      <div class="mini-nav">
+        <a class="active" href="#welcome">welcome</a>
+        <a href="#highlights">highlights</a>
+        <a href="#expertise">expertise</a>
+        <a href="#methodology">methodology</a>
+      </div>
+      <div class="welcome-grid">
+        <div>
+          <div class="kicker">Make inspection that matters</div>
+          <h2 class="display">Acoustic intelligence for live human speech.</h2>
+        </div>
+        <article class="window-card">
+          <div class="window-head"><span>Last evaluation</span><span>In the wild · 200</span></div>
+          <div class="window-body">
+            <p>Multi-engine hybrid accuracy 57.5% on a balanced 200-file in-the-wild set. Scores are experimental diagnostics for human review — not legal identity proof.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section highlights" id="highlights">
+      <div class="highlights-track" id="highlightsTrack">
+        <article class="panel">
+          <div>
+            <div class="panel-index">0001 · Physics engine</div>
+            <h3 class="display">Room &amp; echo</h3>
+            <p>RT60 decay tails, pause-floor room tone, digital silence gates, and cepstral micro-reflections from the space around a live speaker.</p>
+          </div>
+          <div class="panel-visual" data-viz="physics"></div>
+        </article>
+        <article class="panel">
+          <div>
+            <div class="panel-index">0002 · Biology engine</div>
+            <h3 class="display">Breath &amp; voice</h3>
+            <p>Conversational breath events, pitch intonation, 4–12 Hz tremor, jitter, shimmer, and harmonics-to-noise ratio from the vocal tract.</p>
+          </div>
+          <div class="panel-visual" data-viz="biology"></div>
+        </article>
+        <article class="panel">
+          <div>
+            <div class="panel-index">0003 · AASIST</div>
+            <h3 class="display">Spectro-temporal graph</h3>
+            <p>Clova AI AASIST (ICASSP 2022) running locally on 16 kHz waveforms. Official weights, SHA-256 verified, no retraining.</p>
+          </div>
+          <div class="panel-visual" data-viz="aasist"></div>
+        </article>
+        <article class="panel">
+          <div>
+            <div class="panel-index">0004 · Supervised ML</div>
+            <h3 class="display">Eighteen features</h3>
+            <p>A fixed vector from physics and biology, scored by speaker-separated logistic regression or gradient boosting.</p>
+          </div>
+          <div class="panel-visual" data-viz="ml"></div>
+        </article>
+        <article class="panel">
+          <div>
+            <div class="panel-index">0005 · Codec crusher</div>
+            <h3 class="display">Telephone realism</h3>
+            <p>Clean 8 kHz, G.711 µ-law, AMR-NB, packet loss, and line noise so inspection happens under the same constraints as a call.</p>
+          </div>
+          <div class="panel-visual" data-viz="codec"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-pad expertise" id="expertise">
+      <div class="expertise-head">
+        <h2 class="display">Focused. Scalable.</h2>
+        <div class="geo" aria-hidden="true">
+          <span class="plus"></span>
+          <span class="plus"></span>
+          <span class="disk"></span>
+          <span class="half"></span>
+        </div>
+      </div>
+      <div class="cap-row">
+        <button class="cap-btn" data-view="analyze">Inspect a recording <i></i></button>
+      </div>
+      <div class="accordion">
+        <div class="acc-item open">
+          <button type="button">Physics · Room &amp; echo</button>
+          <div class="acc-body">Measures reverberation decay, ambient pause floor, digital gating, and short-delay cepstral peaks. Live rooms leave tails; many clones do not.</div>
+        </div>
+        <div class="acc-item">
+          <button type="button">Biology · Breath &amp; voice</button>
+          <div class="acc-body">Finds involuntary tremor, breath bursts, jitter, shimmer, and HNR. Synthetic voices often flatten micro-perturbation.</div>
+        </div>
+        <div class="acc-item">
+          <button type="button">AASIST · Neural anti-spoofing</button>
+          <div class="acc-body">Graph attention over spectro-temporal artefacts. Primary neural vote when detection mode is pretrained or compare.</div>
+        </div>
+        <div class="acc-item">
+          <button type="button">ML · Speaker-separated training</button>
+          <div class="acc-body">Eighteen ordered features. No speaker leaks from train into test. Falls back to baseline if the joblib model is missing.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-pad methodology" id="methodology">
+      <h2 class="display">A methodical approach to building acoustic systems.</h2>
+      <div class="method-layout">
+        <div>
+          <article class="method-step active">
+            <h6>Inputs &amp; signals</h6>
+            <p>WAV ingress, 8 kHz resample, optional G.711 / AMR crush, packet loss, and line noise before any engine sees the buffer.</p>
+          </article>
+          <article class="method-step">
+            <h6>Windows &amp; direction</h6>
+            <p>Six-second rolling windows, one-second hop. Physics and biology run independently, then a scorer with EMA smoothing.</p>
+          </article>
+          <article class="method-step">
+            <h6>Components &amp; logic</h6>
+            <p>Baseline rules, pretrained AASIST, and the 18-D ML head can run alone or side by side in compare mode.</p>
+          </article>
+          <article class="method-step">
+            <h6>Interfaces &amp; verdict</h6>
+            <p>Cautious labels only: leans bona-fide, leans synthetic, or inconclusive. Human verification stays in the loop.</p>
+          </article>
+          <article class="method-step">
+            <h6>Delivery</h6>
+            <p>REST /analyze, WebSocket /stream, and this cinematic console. Streamlit remains available for lab work.</p>
+          </article>
+        </div>
+        <div class="iso-wrap">
+          <svg width="280" height="220" viewBox="0 0 280 220" fill="none" aria-hidden="true">
+            <path d="M140 20 L240 70 L140 120 L40 70 Z" fill="#2a2a2a" stroke="#ececec" stroke-width="0.6"/>
+            <path d="M40 70 L40 140 L140 190 L140 120 Z" fill="#1a1a1a" stroke="#ececec" stroke-width="0.6"/>
+            <path d="M240 70 L240 140 L140 190 L140 120 Z" fill="#111" stroke="#ececec" stroke-width="0.6"/>
+            <path d="M140 55 L190 80 L140 105 L90 80 Z" fill="#3a3a3a" stroke="#ececec" stroke-width="0.6"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div>
+        <h5>SonicShield</h5>
+        <p>Zero-friction acoustic liveness detection. Experimental prototype — not biometric legal proof.</p>
+      </div>
+      <div>
+        <h5>Platform</h5>
+        <a href="#analyze" data-view="analyze">Analyze</a>
+        <a href="#evaluation" data-view="evaluation">Evaluation</a>
+        <a href="#insights" data-view="insights">Insights</a>
+      </div>
+      <div>
+        <h5>API</h5>
+        <a href="/docs">OpenAPI docs</a>
+        <a href="/health">Health</a>
+      </div>
+      <div class="footer-copy">
+        <span>© 2026 SonicShield</span>
+        <span>Local inference · No cloud voice APIs</span>
+      </div>
+    </footer>
+  </main>
+
+  <section id="view-analyze" class="view app-shell">
+    <div class="kicker">Platform / Analyze</div>
+    <h1 class="display app-title">Audio inspection</h1>
+    <p class="app-sub">Upload a WAV recording. Choose codec, ablation, and scoring mode. Results stay on this machine.</p>
+    <div class="form-grid">
+      <article class="window-card">
+        <div class="window-head"><span>01 · Ingress</span><span>WAV · 25 MB max</span></div>
+        <div class="window-body">
+          <label class="dropzone" id="dropzone">
+            <strong>Drop audio or browse</strong>
+            <span id="fileLabel">No file selected</span>
+            <input type="file" id="fileInput" accept="audio/wav,.wav" hidden />
+          </label>
+          <div class="field" style="margin-top:1vw">
+            <label for="sampleSelect">Demo sample</label>
+            <select id="sampleSelect"><option value="">None</option></select>
+          </div>
+        </div>
+      </article>
+      <article class="window-card">
+        <div class="window-head"><span>02 · Conditions</span><span>Telephony</span></div>
+        <div class="window-body">
+          <div class="field">
+            <label for="codec">Codec</label>
+            <select id="codec">
+              <option value="clean">Clean 8 kHz</option>
+              <option value="g711">G.711 µ-law</option>
+              <option value="amr">AMR-NB</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="mode">Engine ablation</label>
+            <select id="mode">
+              <option value="both">Physics + Biology</option>
+              <option value="physics">Physics only</option>
+              <option value="biology">Biology only</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="detection">Detection mode</label>
+            <select id="detection">
+              <option value="compare">Compare all</option>
+              <option value="pretrained">Pretrained AASIST</option>
+              <option value="baseline">Baseline rules</option>
+              <option value="ml">Supervised ML</option>
+            </select>
+          </div>
+          <button class="btn" id="runBtn" type="button"><span>Run inspection</span></button>
+          <p class="status-line" id="status">Idle</p>
+        </div>
+      </article>
+    </div>
+    <div id="results" class="hidden">
+      <div class="verdict" id="verdict"></div>
+      <div class="metric-grid" id="metrics"></div>
+      <div class="timeline" id="timeline"></div>
+    </div>
+  </section>
+
+  <section id="view-insights" class="view app-shell">
+    <div class="kicker">Platform / Insights</div>
+    <h1 class="display app-title">Engine architecture</h1>
+    <p class="app-sub">Four independent views of the same 6-second window. None of them is treated as courtroom evidence.</p>
+    <div class="metric-grid">
+      <div class="metric"><span>Window</span><b>6.0 s</b></div>
+      <div class="metric"><span>Hop</span><b>1.0 s</b></div>
+      <div class="metric"><span>Sample rate</span><b>8 kHz</b></div>
+      <div class="metric"><span>AASIST input</span><b>16 kHz</b></div>
+    </div>
+    <div class="accordion" style="margin-top:2vw">
+      <div class="acc-item open">
+        <button type="button">Physics vector</button>
+        <div class="acc-body">phys_score, rms_db, decay_slope, reverb_score, pause_rms_db, spectral_flatness, is_digital_silence, cepstral_peak_ratio.</div>
+      </div>
+      <div class="acc-item">
+        <button type="button">Biology vector</button>
+        <div class="acc-body">bio_score, breath_count, breaths_per_min, pitch_mean_hz, pitch_std_hz, tremor_ratio, jitter, shimmer, hnr_db, voiced_fraction.</div>
+      </div>
+      <div class="acc-item">
+        <button type="button">AASIST graph</button>
+        <div class="acc-body">Raw waveform resampled to 16 kHz, 64,600 samples, AASIST.pth, bona-fide vs spoof logits mapped to a 0–100 liveness score.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-evaluation" class="view app-shell">
+    <div class="kicker">Platform / Evaluation</div>
+    <h1 class="display app-title">In-the-wild audit</h1>
+    <p class="app-sub">Balanced 200 recordings. Measured values from the comparative evaluation table in this repository — not a marketing claim of production accuracy.</p>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Engine</th><th>Accuracy</th><th>Macro F1</th><th>ROC-AUC</th><th>EER</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Physics</td><td>0.46</td><td>0.394</td><td>0.474</td><td>0.525</td></tr>
+        <tr><td>Biology</td><td>0.535</td><td>0.414</td><td>0.555</td><td>0.495</td></tr>
+        <tr><td>Pretrained AASIST</td><td>0.565</td><td>0.546</td><td>0.623</td><td>0.440</td></tr>
+        <tr><td>Combined baseline</td><td>0.46</td><td>0.457</td><td>0.485</td><td>0.545</td></tr>
+        <tr><td>Multi-engine hybrid</td><td>0.575</td><td>0.554</td><td>0.571</td><td>0.465</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="view-history" class="view app-shell">
+    <div class="kicker">Platform / History</div>
+    <h1 class="display app-title">Session audit</h1>
+    <p class="app-sub">Stored only in this browser. Clearing site data removes the log.</p>
+    <table class="table">
+      <thead>
+        <tr><th>Time</th><th>File</th><th>Mode</th><th>Score</th><th>Band</th></tr>
+      </thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </section>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js"></script>
+  <script src="/assets/js/noise.js"></script>
+  <script src="/assets/js/particles.js"></script>
+  <script src="/assets/js/app.js"></script>
+</body>
+</html>

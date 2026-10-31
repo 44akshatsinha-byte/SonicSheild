@@ -1,0 +1,21 @@
+file,speaker,duration_sec,sample_rate,true_label,true_binary,predicted_label,predicted_binary,is_correct,bona_fide_score,spoof_score,liveness_score,spoof_logit,bonafide_logit,status,warnings
+3491.wav,Adam Driver,5.94,16000,bona-fide,1,bona_fide,1,True,0.9381,0.0619,94,-1.8577,0.861,success,
+21886.wav,Donald Trump,2.194,16000,bona-fide,1,bona_fide,1,True,0.8254,0.1746,83,-1.2197,0.3336,success,Audio segment (2.19s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+25945.wav,Bernie Sanders,1.26,16000,bona-fide,1,bona_fide,1,True,0.756,0.244,76,-1.1443,-0.0136,success,Audio segment (1.26s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+16979.wav,JFK,2.339,16000,bona-fide,1,spoof,0,False,0.0001,0.9999,0,4.0709,-4.9902,success,Audio segment (2.34s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+14445.wav,Barack Obama,2.212,16000,bona-fide,1,spoof,0,False,0.2135,0.7865,21,-0.0876,-1.3917,success,Audio segment (2.21s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+23748.wav,JFK,2.449,16000,bona-fide,1,bona_fide,1,True,0.5368,0.4632,54,-0.6326,-0.485,success,Audio segment (2.45s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+11237.wav,Donald Trump,5.216,16000,bona-fide,1,bona_fide,1,True,0.6149,0.3851,61,-0.7724,-0.3043,success,
+4483.wav,Mark Zuckerberg,7.076,16000,bona-fide,1,bona_fide,1,True,0.9924,0.0076,99,-3.0666,1.8061,success,
+26038.wav,Ayn Rand,6.289,16000,bona-fide,1,spoof,0,False,0.0897,0.9103,9,0.9261,-1.3914,success,
+23822.wav,Kanye West,4.621,16000,bona-fide,1,bona_fide,1,True,0.9927,0.0073,99,-3.0217,1.8915,success,
+21859.wav,Arnold Schwarzenegger,1.333,16000,spoof,0,spoof,0,True,0.0058,0.9942,1,2.1847,-2.9521,success,Audio segment (1.33s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+24063.wav,Bernie Sanders,16.018,16000,spoof,0,bona_fide,1,False,0.9992,0.0008,100,-4.4475,2.7064,success,
+30266.wav,Orson Welles,8.499,16000,spoof,0,bona_fide,1,False,0.9277,0.0723,93,-1.8122,0.7397,success,
+2007.wav,Ayn Rand,2.818,16000,spoof,0,bona_fide,1,False,0.7494,0.2506,75,-1.0406,0.055,success,Audio segment (2.82s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+22425.wav,Ayn Rand,1.543,16000,spoof,0,spoof,0,True,0.0648,0.9352,6,0.9602,-1.709,success,Audio segment (1.54s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+28096.wav,Alec Guinness,1.916,16000,spoof,0,bona_fide,1,False,0.9952,0.0048,100,-3.414,1.9229,success,Audio segment (1.92s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.
+9882.wav,Alec Guinness,7.034,16000,spoof,0,spoof,0,True,0.1169,0.8831,12,0.5789,-1.443,success,
+11209.wav,Bernie Sanders,4.544,16000,spoof,0,bona_fide,1,False,0.9962,0.0038,100,-3.5128,2.0452,success,
+30340.wav,Alec Guinness,4.388,16000,spoof,0,bona_fide,1,False,0.9917,0.0083,99,-3.1128,1.6743,success,
+30698.wav,Milton Friedman,1.277,16000,spoof,0,spoof,0,True,0.0002,0.9998,0,3.7253,-4.7029,success,Audio segment (1.28s) shorter than AASIST required window (4.04s); applied cyclic tile-padding.

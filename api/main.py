@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import io
 import time
+from pathlib import Path
+
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, Query, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.audio_utils import AudioValidationError
 from src.codec_crusher import get_supported_codecs, CodecUnavailableError
@@ -17,6 +20,10 @@ from src.scorer import score_window
 from src.ml_features import extract_features
 from src.ml_classifier import get_ml_classifier
 from src.pretrained_aasist import get_aasist_classifier
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = ROOT_DIR / "frontend"
+SMOKE_DIR = ROOT_DIR / "data" / "smoke"
 
 app = FastAPI(
     title="SonicShield API",
@@ -154,7 +161,16 @@ async def stream_audio(websocket: WebSocket):
                 ml_res = ml_clf.predict_window(feat_vec)
 
                 # Pretrained AASIST inference
-                aasist_win = aasist_clf.predict(window_slice, sr=sr)
+                try:
+                    aasist_win = aasist_clf.predict(window_slice, sr=sr)
+                except Exception as e:
+                    aasist_win = {
+                        "model": "AASIST",
+                        "model_loaded": False,
+                        "predicted_class": "error",
+                        "bona_fide_score": None,
+                        "liveness_score": None,
+                    }
 
                 update_msg = {
                     "t": round(current_time_sec, 1),
@@ -185,3 +201,37 @@ async def stream_audio(websocket: WebSocket):
             await websocket.close()
         except Exception:
             pass
+
+
+@app.get("/")
+def frontend_index():
+    index = FRONTEND_DIR / "index.html"
+    if not index.exists():
+        return JSONResponse({"service": "SonicShield API", "frontend": "missing"})
+    return FileResponse(index)
+
+
+@app.get("/samples")
+def list_samples():
+    files = []
+    if SMOKE_DIR.exists():
+        for path in sorted(SMOKE_DIR.glob("*.wav")):
+            files.append({"name": path.stem, "filename": path.name})
+    return {"samples": files}
+
+
+@app.get("/samples/{filename}")
+def get_sample(filename: str):
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid sample name.")
+    path = (SMOKE_DIR / filename).resolve()
+    if not str(path).startswith(str(SMOKE_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid sample path.")
+    if not path.exists() or path.suffix.lower() != ".wav":
+        raise HTTPException(status_code=404, detail="Sample not found.")
+    return FileResponse(path, media_type="audio/wav")
+
+
+if FRONTEND_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR)), name="assets")
+

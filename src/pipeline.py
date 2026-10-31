@@ -141,7 +141,21 @@ def run_pipeline(
         ml_res = ml_clf.predict_window(feat_vec)
 
         # Pretrained AASIST Anti-Spoofing Inference (resampled 16 kHz internally)
-        aasist_win = aasist_clf.predict(win.audio, sr=sr, codec=codec)
+        try:
+            aasist_win = aasist_clf.predict(win.audio, sr=sr, codec=codec)
+        except Exception as e:
+            aasist_win = {
+                "model": "AASIST",
+                "model_loaded": False,
+                "predicted_class": "error",
+                "bona_fide_score": None,
+                "liveness_score": None,
+                "raw_score": None,
+                "sample_rate": 16000,
+                "codec": codec,
+                "status": f"inference_error: {e}",
+                "warnings": [f"AASIST window analysis failed: {e}"],
+            }
 
         # Determine active score based on detection_mode
         baseline_score = scored["liveness"]
@@ -212,15 +226,37 @@ def run_pipeline(
     )
 
     # Recording-level AASIST inference on full crushed audio
-    aasist_overall = aasist_clf.predict(crushed_audio, sr=sr, codec=codec)
+    try:
+        aasist_overall = aasist_clf.predict(crushed_audio, sr=sr, codec=codec)
+    except Exception as e:
+        aasist_overall = {
+            "model": "AASIST",
+            "model_loaded": False,
+            "predicted_class": "error",
+            "bona_fide_score": None,
+            "liveness_score": None,
+            "raw_score": None,
+            "sample_rate": 16000,
+            "codec": codec,
+            "status": f"inference_error: {e}",
+            "warnings": [f"AASIST overall analysis failed: {e}"],
+        }
+
     overall_aasist_liveness = (
         aasist_overall.get("liveness_score") if aasist_overall.get("model_loaded") else None
     )
     if overall_aasist_liveness is None and valid_aasist_scores:
         overall_aasist_liveness = int(round(float(np.mean(valid_aasist_scores))))
 
-    if detection_mode == "pretrained" and overall_aasist_liveness is not None:
-        overall_liveness = overall_aasist_liveness
+    if detection_mode == "pretrained":
+        if overall_aasist_liveness is not None:
+            overall_liveness = overall_aasist_liveness
+        else:
+            overall_liveness = overall_baseline_liveness
+            warnings.append(
+                f"AASIST inference unavailable or failed ({aasist_overall.get('status', 'error')}); "
+                f"fell back to rule-based baseline scoring."
+            )
     elif detection_mode == "ml" and overall_ml_liveness is not None:
         overall_liveness = overall_ml_liveness
     else:

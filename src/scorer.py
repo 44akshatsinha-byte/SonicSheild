@@ -40,7 +40,7 @@ def score_window(
     mode: str = "both",
     ema_alpha: float = DEFAULT_EMA_ALPHA,
 ) -> dict:
-    """Combines independent Physics and Biology engine outputs into a calibrated liveness score.
+    """Combines independent Physics and Biology engine outputs into a composite liveness score.
     
     Args:
         physics_result: Output dict from physics_engine.analyze().

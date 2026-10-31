@@ -13,13 +13,13 @@ AI voice cloning allows fraudsters to impersonate individuals during telephone c
 
 1. **🏛️ Physics Engine (Room & Echo):** Measures room reverberation decay tails ($RT_{60}$ proxy), ambient pause room tone floor, digital silence/gating, and short-delay cepstral micro-reflections.
 2. **🫁 Biology Engine (Breath & Voice):** Analyzes conversational breath pause events, natural pitch intonation variation, involuntary vocal tremor (4–12 Hz), jitter, shimmer, and harmonics-to-noise ratio (HNR).
-3. **⚡ Pretrained AASIST Deep Learning Engine (Audio Anti-Spoofing):** Uses the official Clova AI AASIST (ICASSP 2022) architecture and pretrained weights (`AASIST.pth`, SHA-256 verified) running local inference on raw waveforms resampled to 16 kHz (64,600 samples) without retraining.
+3. **⚡ Pretrained AASIST Deep Learning Engine (Audio Anti-Spoofing):** Uses the Clova AI AASIST (ICASSP 2022) architecture and pretrained weights (`AASIST.pth`, SHA-256 verified) running local inference on raw waveforms resampled to 16 kHz (64,600 samples) without retraining.
 4. **🤖 Supervised Machine Learning Classifier:** Consumes a fixed 18-dimensional feature vector combining room reverberation, pause noise floor, and vocal perturbation. Implements scikit-learn Logistic Regression and Gradient Boosting pipelines with zero-leakage speaker-separated training.
 5. **🎯 Confidence Scorer & Detection Modes:** 
    - **`baseline`**: Transparent rule-based heuristic scoring (0–100) with Exponential Moving Average (EMA) smoothing across rolling windows.
-   - **`pretrained`**: Independent SOTA AASIST deep neural network inference on raw audio.
+   - **`pretrained`**: Pretrained AASIST deep neural network inference on raw audio.
    - **`ml`**: Handcrafted feature ML model-derived probability scaled to an experimental 0–100 score.
-   - **`compare`**: Displays rule-based baseline, AASIST SOTA neural network, and custom ML outputs side-by-side.
+   - **`compare`**: Displays rule-based baseline, pretrained AASIST neural network, and custom ML outputs side-by-side.
 6. **📻 Codec Crusher:** Simulates authentic telephone network conditions (Clean 8 kHz, ITU-T G.711 $\mu$-law, AMR-NB, packet loss, and line noise).
 
 ---
@@ -212,5 +212,5 @@ SonicShield/
 
 1. **Acoustic Overlap:** Acoustic indicators are imperfect heuristics. Genuine callers speaking through headsets, in heavily treated rooms, or with aggressive microphone noise suppression can exhibit low room reverberation.
 2. **Replayed Clones:** Synthetic audio played through a loudspeaker into a physical room will capture genuine environmental reflections. SonicShield pairs the Physics Engine with the Biology Engine to mitigate this vulnerability.
-3. **Prototype Calibration:** Displayed scores represent experimental confidence indicators (0–100), not formal posterior probabilities of authenticity.
+3. **Prototype Calibration & Accuracy:** Displayed scores represent experimental confidence indicators (0–100), not formal calibrated probabilities of authenticity. Detection accuracy on real-world telephone calls has not been established without a fully labelled, in-domain test dataset.
 4. **No Automated Decisions:** SonicShield is an **agent-assist tool**. It never terminates calls or blocks accounts. For calls in the amber or red bands, it provides neutral conversational prompts to stimulate spontaneous un-scripted speech.
