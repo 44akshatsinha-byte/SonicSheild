@@ -114,7 +114,7 @@ async def analyze_audio(
         raise HTTPException(status_code=500, detail=f"Unexpected processing error: {e}")
 
     # Remove raw numpy arrays before JSON serialization
-    response_payload = {k: v for k, v in result.items() if k not in ("crushed_audio", "raw_audio")}
+    response_payload = {k: v for k, v in result.items() if not isinstance(v, np.ndarray)}
     return JSONResponse(content=response_payload)
 
 @app.websocket("/stream")

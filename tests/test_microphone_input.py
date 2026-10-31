@@ -273,3 +273,4 @@ def test_existing_uploaded_file_analysis_still_works():
     assert 0 <= res["overall_liveness"] <= 100
     assert res["overall_band"] in ("green", "amber", "red")
     assert res["duration_sec"] > 0
+

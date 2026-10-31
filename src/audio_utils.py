@@ -22,6 +22,103 @@ class AudioValidationWarning(UserWarning):
     """Warning for non-fatal audio conditions such as excessive silence or clipping."""
     pass
 
+def load_audio_dual(
+    file_source: str | io.BytesIO | bytes,
+    max_duration_seconds: float = 600.0,
+) -> tuple[np.ndarray, np.ndarray, int, list[str]]:
+    """Loads audio from source and produces both 8 kHz and 16 kHz mono float32 waveforms.
+    
+    Branch A: 8 kHz waveform for Physics and Biology diagnostic engines (telephonic domain).
+    Branch B: 16 kHz waveform for Pretrained AASIST neural engine (wideband domain).
+    
+    Preserves wideband frequencies for AASIST while supplying standard 8 kHz audio
+    for acoustic room physics and vocal perturbation analysis.
+    
+    Returns:
+        audio_8k: 1D float32 array at 8000 Hz.
+        audio_16k: 1D float32 array at 16000 Hz.
+        orig_sr: Original sample rate from audio metadata.
+        warnings: List of diagnostic warnings (clipping, multi-channel downmixing, silence).
+    
+    Raises:
+        AudioValidationError: If the file is unreadable, empty, corrupted, or too long.
+    """
+    warnings: list[str] = []
+
+    # Handle raw bytes
+    if isinstance(file_source, bytes):
+        if len(file_source) == 0:
+            raise AudioValidationError("Audio file is completely empty (0 bytes).")
+        file_source = io.BytesIO(file_source)
+
+    try:
+        data, orig_sr = sf.read(file_source, dtype="float32", always_2d=True)
+    except Exception as e:
+        raise AudioValidationError(f"Could not read audio file: {e}") from e
+
+    if data.size == 0 or len(data) == 0:
+        raise AudioValidationError("Audio contains no sample data.")
+
+    # Convert stereo / multi-channel to mono
+    if data.shape[1] > 1:
+        mono = np.mean(data, axis=1)
+        warnings.append(f"Multi-channel audio ({data.shape[1]} channels) downmixed to mono.")
+    else:
+        mono = data[:, 0]
+
+    # Check for NaN or Inf
+    if not np.all(np.isfinite(mono)):
+        mono = np.nan_to_num(mono, nan=0.0, posinf=1.0, neginf=-1.0)
+        warnings.append("Non-finite values (NaN/Inf) were detected and sanitized in the input audio.")
+
+    # Duration check
+    raw_duration = len(mono) / orig_sr
+    if raw_duration > max_duration_seconds:
+        raise AudioValidationError(
+            f"Audio duration ({raw_duration:.1f}s) exceeds maximum allowed duration ({max_duration_seconds}s)."
+        )
+
+    # Branch A: 8,000 Hz (Telephony)
+    if orig_sr == TARGET_SR:
+        audio_8k = mono.astype(np.float32)
+    else:
+        num_8k = int(math.ceil(len(mono) * TARGET_SR / orig_sr))
+        if num_8k == 0:
+            raise AudioValidationError("Resampling to 8 kHz resulted in 0 samples.")
+        audio_8k = scipy.signal.resample(mono, num_8k).astype(np.float32)
+
+    # Branch B: 16,000 Hz (Wideband AASIST)
+    if orig_sr == 16000:
+        audio_16k = mono.astype(np.float32)
+    elif orig_sr == TARGET_SR:
+        # Source was natively 8 kHz: upsample using polyphase filter
+        audio_16k = scipy.signal.resample_poly(mono, 2, 1).astype(np.float32)
+    else:
+        num_16k = int(math.ceil(len(mono) * 16000 / orig_sr))
+        if num_16k == 0:
+            raise AudioValidationError("Resampling to 16 kHz resulted in 0 samples.")
+        audio_16k = scipy.signal.resample(mono, num_16k).astype(np.float32)
+
+    # Check clipping on both representations
+    max_amp = max(
+        float(np.max(np.abs(audio_8k))) if len(audio_8k) > 0 else 0.0,
+        float(np.max(np.abs(audio_16k))) if len(audio_16k) > 0 else 0.0,
+    )
+    if max_amp >= 0.999:
+        warnings.append("Severe audio clipping detected (amplitude >= 0.999). Acoustic features may be distorted.")
+
+    # Check RMS energy / silence
+    rms = float(np.sqrt(np.mean(audio_8k**2))) if len(audio_8k) > 0 else 0.0
+    if rms < SILENCE_RMS_THRESHOLD:
+        warnings.append("Audio is virtually silent (RMS < 1e-4). Liveness assessment may be unreliable.")
+
+    final_duration = len(audio_8k) / TARGET_SR
+    if final_duration < 1.0:
+        warnings.append(f"Recording is very short ({final_duration:.2f}s). At least 6 seconds is recommended for rolling window analysis.")
+
+    return audio_8k, audio_16k, orig_sr, warnings
+
+
 def load_audio(
     file_source: str | io.BytesIO | bytes,
     target_sr: int = TARGET_SR,

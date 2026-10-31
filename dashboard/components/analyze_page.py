@@ -123,12 +123,20 @@ def generate_multi_engine_explanation(res: dict) -> dict:
         bio_desc = f"Biology Engine recorded moderate vocal stability consistent with conversational telephone speech ({bio_val}/100)."
 
     # 4. Engine agreement synthesis
+    codec = res.get("codec", "clean")
     if aasist_class == "bona_fide" and phys_val >= 50 and bio_val >= 50:
         agreement = "Consensus: Acoustic physics, vocal tract dynamics, and deep neural graph representations all align towards authentic human speech patterns."
         agree_type = "aligned_human"
     elif aasist_class == "spoof" and (phys_val < 50 or bio_val < 50):
         agreement = "Consensus: Neural artifacts and supporting acoustic/vocal diagnostics consistently point towards synthetic or cloned voice attributes."
         agree_type = "aligned_synthetic"
+    elif aasist_class == "spoof" and codec in ("g711", "amr") and phys_val >= 50 and bio_val >= 50:
+        agreement = (
+            "Divergent / Telephony Channel Effect: AASIST flagged spoof-like patterns, which is an expected consequence of 8 kHz telephone compression "
+            "(frequencies above 3.4 kHz are physically truncated by the PSTN bandpass filter). In contrast, Physics and Biology engines confirmed natural room "
+            "reverberation decay and organic vocal micro-perturbations. To test uncompressed speech without telephone artifacts, select 'Clean (16 kHz Native)'."
+        )
+        agree_type = "divergent"
     else:
         agreement = "Divergent Indicators: The neural anti-spoofing model and acoustic physical diagnostics exhibit differing evidence levels. Such divergence is common with high-fidelity vocoders in physical rooms or human speakers using noise-cancelling microphones. Human operator verification is recommended."
         agree_type = "divergent"
@@ -455,7 +463,7 @@ def render_analyze_page():
                     index=0,
                 )
 
-                codec_choices = ["g711", "clean"]
+                codec_choices = ["clean", "g711"]
                 if supported_codecs.get("amr"):
                     codec_choices.append("amr")
 
@@ -463,12 +471,31 @@ def render_analyze_page():
                     "Telephony Codec Simulation",
                     options=codec_choices,
                     format_func=lambda x: {
-                        "g711": "G.711 μ-law (Standard PSTN Landline)",
-                        "clean": "Clean (8 kHz Linear Reference)",
-                        "amr": "AMR-NB 12.2k (GSM Cellular)",
+                        "clean": "Clean (16 kHz Native / Direct Wideband Speech)",
+                        "g711": "G.711 μ-law (8 kHz Standard PSTN Telephony)",
+                        "amr": "AMR-NB 12.2k (8 kHz GSM Cellular)",
                     }.get(x, x),
                     index=0,
                 )
+
+                if selected_codec == "clean":
+                    st.markdown(
+                        """
+                        <div style="font-size: 0.72rem; color: #0F766E; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 5px; padding: 5px 8px; margin: 4px 0 8px 0; line-height: 1.35;">
+                            <strong>Branch B (AASIST):</strong> Evaluating native 16 kHz wideband audio. Full frequency bandwidth (0–8,000 Hz) is preserved for deep spectro-temporal graph attention.
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        """
+                        <div style="font-size: 0.72rem; color: #9A3412; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 5px; padding: 5px 8px; margin: 4px 0 8px 0; line-height: 1.35;">
+                            <strong>Branch B (AASIST):</strong> Evaluating 8 kHz telephone-band audio upsampled to 16 kHz. Because telephone channels truncate frequencies above 3.4 kHz, AASIST high-frequency filterbanks lack signal energy, naturally depressing bona-fide scores (out-of-domain telephone speech).
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
                 analysis_mode = st.selectbox(
                     "Ablation Focus",
@@ -612,6 +639,13 @@ def render_analyze_page():
             )
             aas_color = "#13A89E" if aasist_class == "bona_fide" else ("#D95757" if aasist_class == "spoof" else "#707C8B")
 
+            if res.get("codec") == "clean":
+                ingress_path_html = f"{active_source.split()[0]} ➔ Direct 16 kHz Wideband"
+                ingress_sub_html = "Native wideband (0–8 kHz preserved)"
+            else:
+                ingress_path_html = f"{active_source.split()[0]} ➔ 8k {res['codec'].upper()} ➔ 16k Polyphase"
+                ingress_sub_html = "Telephone bandlimited (<3.4 kHz)"
+
             st.markdown(
                 f"""
                 <div class="ss-card" style="border-left: 3px solid var(--ss-teal-accent);">
@@ -654,15 +688,34 @@ def render_analyze_page():
                         <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
                             <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Ingress & Codec Path</div>
                             <div style="font-size: 0.82rem; font-weight: 700; color: #14283D; margin: 2px 0;">
-                                {active_source.split()[0]} ➔ {res['codec'].upper()} ➔ 16k Mono
+                                {ingress_path_html}
                             </div>
-                            <div style="font-size: 0.68rem; color: #8E97A4;">64,600 samples window</div>
+                            <div style="font-size: 0.68rem; color: #8E97A4;">{ingress_sub_html}</div>
                         </div>
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+
+            if res.get("codec") == "clean":
+                st.markdown(
+                    """
+                    <div style="font-size: 0.73rem; color: #0F766E; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 7px 11px; margin-top: 4px; line-height: 1.4;">
+                        🛡️ <strong>Independent Dual-Branch Pipeline:</strong> AASIST evaluated native 16 kHz wideband speech preserving full acoustic frequency resolution (0–8,000 Hz). In parallel, Branch A evaluated 8 kHz telephonic audio for Room Acoustics (Physics Engine) and Vocal Perturbations (Biology Engine).
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style="font-size: 0.73rem; color: #9A3412; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 7px 11px; margin-top: 4px; line-height: 1.4;">
+                        ⚠️ <strong>Out-of-Domain Telephone Bandwidth Effect:</strong> AASIST evaluated 8 kHz telephone-band audio upsampled to 16 kHz. Standard PSTN / cellular codecs filter out frequencies above 3.4 kHz. Because AASIST was trained on wideband speech with active acoustic energy up to 8 kHz, telephone audio naturally receives depressed bona-fide scores due to channel bandlimiting. To inspect uncompressed microphone speech, select <strong>Clean (16 kHz Native)</strong>.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             # 3. Supporting Diagnostics: Physics & Biology Engine Cards
             col_diag_phys, col_diag_bio = st.columns(2)
@@ -736,12 +789,18 @@ def render_analyze_page():
             # Audio Players
             col_play1, col_play2 = st.columns(2)
             with col_play1:
-                if "raw_audio" in res:
-                    st.markdown("<div style='font-size:0.74rem; font-weight:600; color:#E2E8F0; margin-bottom:2px;'>Preprocessed Ingress (8 kHz Mono)</div>", unsafe_allow_html=True)
+                if res.get("codec") == "clean" and "audio_16k" in res:
+                    st.markdown("<div style='font-size:0.74rem; font-weight:600; color:#E2E8F0; margin-bottom:2px;'>Branch B AASIST Ingress (16 kHz Wideband Mono)</div>", unsafe_allow_html=True)
+                    st.audio(audio_to_wav_bytes(res["audio_16k"], sr=16000), format="audio/wav")
+                elif "raw_audio" in res:
+                    st.markdown("<div style='font-size:0.74rem; font-weight:600; color:#E2E8F0; margin-bottom:2px;'>Branch A Ingress (8 kHz Telephony Mono)</div>", unsafe_allow_html=True)
                     st.audio(audio_to_wav_bytes(res["raw_audio"], sr=8000), format="audio/wav")
 
             with col_play2:
-                if "crushed_audio" in res:
+                if res.get("codec") == "clean" and "raw_audio" in res:
+                    st.markdown("<div style='font-size:0.74rem; font-weight:600; color:#E2E8F0; margin-bottom:2px;'>Branch A Diagnostics Ingress (8 kHz Mono)</div>", unsafe_allow_html=True)
+                    st.audio(audio_to_wav_bytes(res["raw_audio"], sr=8000), format="audio/wav")
+                elif "crushed_audio" in res:
                     st.markdown(f"<div style='font-size:0.74rem; font-weight:600; color:#E2E8F0; margin-bottom:2px;'>Telephone Codec Output ({res['codec'].upper()})</div>", unsafe_allow_html=True)
                     st.audio(audio_to_wav_bytes(res["crushed_audio"], sr=8000), format="audio/wav")
 

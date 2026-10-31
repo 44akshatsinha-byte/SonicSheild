@@ -6,10 +6,12 @@ and side-by-side comparison mode across 6s rolling windows.
 from __future__ import annotations
 
 import io
+import math
 import time
 import numpy as np
+import scipy.signal
 
-from src.audio_utils import load_audio, AudioValidationError
+from src.audio_utils import load_audio, load_audio_dual, AudioValidationError
 from src.windows import generate_windows, AudioWindow
 from src.codec_crusher import crush, CodecUnavailableError
 from src.physics_engine import analyze as analyze_physics
@@ -71,21 +73,37 @@ def run_pipeline(
             f"Baseline rule-based scoring will be used for primary decisions."
         )
 
-    # 1. Audio Loading & Preprocessing
+    # 1. Dual-Branch Audio Ingress & Preprocessing
+    # Branch A: 8,000 Hz float32 mono for Physics and Biology diagnostic engines (Telephony domain)
+    # Branch B: 16,000 Hz float32 mono for AASIST Neural Anti-Spoofing engine (Wideband domain)
     if isinstance(file_source, np.ndarray):
-        raw_audio = file_source.astype(np.float32)
+        raw_arr = file_source.astype(np.float32)
+        if sr == 8000:
+            audio_8k = raw_arr
+            audio_16k = scipy.signal.resample_poly(raw_arr, 2, 1).astype(np.float32)
+        elif sr == 16000:
+            audio_16k = raw_arr
+            num_8k = int(math.ceil(len(raw_arr) * 8000 / 16000))
+            audio_8k = scipy.signal.resample(raw_arr, num_8k).astype(np.float32)
+        else:
+            num_8k = int(math.ceil(len(raw_arr) * 8000 / sr))
+            audio_8k = scipy.signal.resample(raw_arr, num_8k).astype(np.float32)
+            num_16k = int(math.ceil(len(raw_arr) * 16000 / sr))
+            audio_16k = scipy.signal.resample(raw_arr, num_16k).astype(np.float32)
+        raw_audio = audio_8k
         audio_warnings = []
     else:
-        raw_audio, sr, audio_warnings = load_audio(file_source, target_sr=sr)
+        audio_8k, audio_16k, orig_sr, audio_warnings = load_audio_dual(file_source)
+        raw_audio = audio_8k
     warnings.extend(audio_warnings)
 
-    duration_sec = round(len(raw_audio) / sr, 2)
+    duration_sec = round(len(audio_8k) / 8000, 2)
 
-    # 2. Codec Crusher Simulation
+    # 2. Branch A Codec Crusher Simulation (8 kHz Telephony Domain)
     try:
         crushed_audio = crush(
-            raw_audio,
-            sr=sr,
+            audio_8k,
+            sr=8000,
             codec=codec,
             packet_loss_rate=packet_loss_rate,
             line_noise_snr=line_noise_snr,
@@ -95,20 +113,30 @@ def run_pipeline(
     except Exception as e:
         raise PipelineError(f"Failed applying codec '{codec}': {e}") from e
 
-    # 3. Rolling Window Generation (6s windows, 1s hop)
-    windows, win_warnings = generate_windows(crushed_audio, sr=sr)
+    # 3. Branch B Preparation for AASIST Neural Engine (16 kHz Domain)
+    # For CLEAN codec: AASIST directly evaluates native 16 kHz wideband speech.
+    # For Telephony codecs (G.711 / AMR): AASIST evaluates authentic telephone audio
+    # resampled from the 8 kHz crushed channel to 16 kHz.
+    if codec == "clean":
+        aasist_input_audio = audio_16k
+    else:
+        # Authentic telephone channel simulation: 8 kHz crushed audio upsampled to 16 kHz
+        aasist_input_audio = scipy.signal.resample_poly(crushed_audio, 2, 1).astype(np.float32)
+
+    # 4. Rolling Window Generation (6s windows, 1s hop at 8 kHz)
+    windows, win_warnings = generate_windows(crushed_audio, sr=8000)
     warnings.extend(win_warnings)
 
     if not windows:
         raise PipelineError("No analysis windows could be generated from input audio.")
 
-    # 4. Engine Analysis, Scorer Fusion, & ML Inference per Window
+    # 5. Engine Analysis, Scorer Fusion, & ML Inference per Window
     window_results: list[dict] = []
     history: list[dict] = []
 
     for win in windows:
         try:
-            phys_res = analyze_physics(win.audio, sr=sr)
+            phys_res = analyze_physics(win.audio, sr=8000)
         except Exception as e:
             phys_res = {
                 "score": 0.5,
@@ -117,7 +145,7 @@ def run_pipeline(
             }
 
         try:
-            bio_res = analyze_biology(win.audio, sr=sr)
+            bio_res = analyze_biology(win.audio, sr=8000)
         except Exception as e:
             bio_res = {
                 "score": 0.5,
@@ -134,15 +162,22 @@ def run_pipeline(
             phys_res,
             bio_res,
             window_audio=win.audio,
-            sr=sr,
+            sr=8000,
         )
 
         # ML Model Inference
         ml_res = ml_clf.predict_window(feat_vec)
 
-        # Pretrained AASIST Anti-Spoofing Inference (resampled 16 kHz internally)
+        # Pretrained AASIST Anti-Spoofing Inference (Branch B: 16 kHz)
         try:
-            aasist_win = aasist_clf.predict(win.audio, sr=sr, codec=codec)
+            if codec == "clean":
+                start_samp_16k = int(round(win.t_start * 16000))
+                end_samp_16k = int(round(win.t_end * 16000))
+                win_audio_aasist = audio_16k[start_samp_16k:end_samp_16k]
+            else:
+                win_audio_aasist = scipy.signal.resample_poly(win.audio, 2, 1).astype(np.float32)
+
+            aasist_win = aasist_clf.predict(win_audio_aasist, sr=16000, codec=codec)
         except Exception as e:
             aasist_win = {
                 "model": "AASIST",
@@ -225,9 +260,19 @@ def run_pipeline(
         int(round(float(np.mean(valid_ml_scores)))) if valid_ml_scores and ml_clf.is_loaded else None
     )
 
-    # Recording-level AASIST inference on full crushed audio
+    # Recording-level AASIST inference on Branch B audio (16 kHz Domain)
     try:
-        aasist_overall = aasist_clf.predict(crushed_audio, sr=sr, codec=codec)
+        aasist_overall = aasist_clf.predict(aasist_input_audio, sr=16000, codec=codec)
+        if codec != "clean" and aasist_overall.get("model_loaded"):
+            telephony_warning = (
+                "AASIST evaluated 8 kHz telephone-band audio upsampled to 16 kHz. "
+                "Because standard telephone codecs filter out frequencies above 3.4 kHz, "
+                "AASIST high-frequency filterbanks lack signal energy, which naturally "
+                "depresses bona-fide scores due to channel bandlimiting (out-of-domain telephone speech)."
+            )
+            if telephony_warning not in aasist_overall.get("warnings", []):
+                aasist_overall.setdefault("warnings", []).append(telephony_warning)
+                warnings.append(telephony_warning)
     except Exception as e:
         aasist_overall = {
             "model": "AASIST",
@@ -317,4 +362,7 @@ def run_pipeline(
         "windows": window_results,
         "crushed_audio": crushed_audio,
         "raw_audio": raw_audio,
+        "audio_16k": audio_16k,
+        "aasist_input_audio": aasist_input_audio,
+        "telephony_out_of_domain": codec != "clean",
     }
