@@ -22,6 +22,98 @@ class AudioValidationWarning(UserWarning):
     """Warning for non-fatal audio conditions such as excessive silence or clipping."""
     pass
 
+
+def analyze_clipping_telemetry(wav: np.ndarray, threshold: float = 0.999) -> dict:
+    """Performs rigorous 10-point waveform amplitude and digital rail clipping analysis.
+    
+    Distinguishes:
+    1. Normal Dynamic Range: Signal peaks comfortably below digital full scale.
+    2. Legitimate Near-Full-Scale Transient Peak: Isolated samples touching rail,
+       with zero flat-topped consecutive saturation and negligible percentage (< 0.01%).
+    3. Severe Audio Clipping: True flat-topped waveform saturation with >= 4 consecutive
+       samples at the rail and/or significant percentage of saturated samples (>= 0.02%).
+       
+    Returns:
+        dict: Detailed 10-point telemetry metrics and actionable diagnosis.
+    """
+    if len(wav) == 0:
+        return {
+            "max_abs": 0.0,
+            "min_val": 0.0,
+            "max_val": 0.0,
+            "rms": 0.0,
+            "crest_factor": 0.0,
+            "pct_99": 0.0,
+            "pct_999": 0.0,
+            "max_consecutive_rail": 0,
+            "plateau_runs": 0,
+            "is_clipped": False,
+            "is_transient_peak": False,
+            "warning": None,
+        }
+
+    mono = wav if wav.ndim == 1 else np.mean(wav, axis=1)
+    abs_wav = np.abs(mono)
+    max_abs = float(np.max(abs_wav))
+    min_val = float(np.min(mono))
+    max_val = float(np.max(mono))
+    rms = float(np.sqrt(np.mean(mono**2)))
+    crest_factor = max_abs / rms if rms > 1e-9 else 0.0
+
+    count_99 = int(np.sum(abs_wav >= 0.99))
+    count_999 = int(np.sum(abs_wav >= threshold))
+    pct_99 = (count_99 / len(mono)) * 100.0
+    pct_999 = (count_999 / len(mono)) * 100.0
+
+    # Consecutive rail samples
+    is_at_rail = (abs_wav >= threshold).astype(np.int32)
+    max_consecutive = 0
+    curr_consecutive = 0
+    plateau_runs = 0
+    for v in is_at_rail:
+        if v == 1:
+            curr_consecutive += 1
+            if curr_consecutive > max_consecutive:
+                max_consecutive = curr_consecutive
+        else:
+            if curr_consecutive >= 3:
+                plateau_runs += 1
+            curr_consecutive = 0
+    if curr_consecutive >= 3:
+        plateau_runs += 1
+
+    # True clipping requires flat-topped peak runs or non-negligible saturation
+    is_clipped = (max_consecutive >= 4) or (pct_999 >= 0.02 and max_consecutive >= 2)
+    is_transient_peak = (max_abs >= threshold) and not is_clipped
+
+    warning = None
+    if is_clipped:
+        warning = (
+            f"True audio clipping detected ({pct_999:.2f}% saturated samples, {max_consecutive} consecutive "
+            f"samples at digital rail). Flat-topped clipping introduces odd-harmonic distortion that causes neural "
+            f"anti-spoofing models to misclassify voice as synthetic. Please reduce microphone input gain in system settings."
+        )
+    elif is_transient_peak:
+        warning = (
+            f"Near full-scale transient peak detected (max amplitude = {max_abs:.3f}), but waveform is not clipped "
+            f"(no flat-topped saturation; dynamic range preserved)."
+        )
+
+    return {
+        "max_abs": round(max_abs, 4),
+        "min_val": round(min_val, 4),
+        "max_val": round(max_val, 4),
+        "rms": round(rms, 6),
+        "crest_factor": round(crest_factor, 2),
+        "pct_99": round(pct_99, 3),
+        "pct_999": round(pct_999, 4),
+        "max_consecutive_rail": max_consecutive,
+        "plateau_runs": plateau_runs,
+        "is_clipped": is_clipped,
+        "is_transient_peak": is_transient_peak,
+        "warning": warning,
+    }
+
 def load_audio_dual(
     file_source: str | io.BytesIO | bytes,
     max_duration_seconds: float = 600.0,
@@ -100,12 +192,12 @@ def load_audio_dual(
         audio_16k = scipy.signal.resample(mono, num_16k).astype(np.float32)
 
     # Check clipping on both representations
-    max_amp = max(
-        float(np.max(np.abs(audio_8k))) if len(audio_8k) > 0 else 0.0,
-        float(np.max(np.abs(audio_16k))) if len(audio_16k) > 0 else 0.0,
-    )
-    if max_amp >= 0.999:
-        warnings.append("Severe audio clipping detected (amplitude >= 0.999). Acoustic features may be distorted.")
+    clip_16k = analyze_clipping_telemetry(audio_16k)
+    clip_8k = analyze_clipping_telemetry(audio_8k)
+    if clip_16k["warning"]:
+        warnings.append(clip_16k["warning"])
+    elif clip_8k["warning"] and clip_8k["is_clipped"]:
+        warnings.append(clip_8k["warning"])
 
     # Check RMS energy / silence
     rms = float(np.sqrt(np.mean(audio_8k**2))) if len(audio_8k) > 0 else 0.0
@@ -180,9 +272,9 @@ def load_audio(
         audio = mono.astype(np.float32)
 
     # Check clipping
-    max_amp = np.max(np.abs(audio)) if len(audio) > 0 else 0.0
-    if max_amp >= 0.999:
-        warnings.append("Severe audio clipping detected (amplitude >= 0.999). Acoustic features may be distorted.")
+    clip_info = analyze_clipping_telemetry(audio)
+    if clip_info["warning"]:
+        warnings.append(clip_info["warning"])
 
     # Check RMS energy / silence
     rms = np.sqrt(np.mean(audio**2)) if len(audio) > 0 else 0.0
@@ -296,8 +388,9 @@ def validate_recording_bytes(
     elif rms < 1e-3:
         warnings.append("Low microphone volume detected. Speaking closer to your microphone will improve detection confidence.")
 
-    if max_amp >= 0.999:
-        warnings.append("Microphone clipping detected (max amplitude reached 1.0). Consider reducing input gain.")
+    clip_stats = analyze_clipping_telemetry(mono)
+    if clip_stats["warning"]:
+        warnings.append(clip_stats["warning"])
 
     metadata = {
         "duration_sec": round(raw_duration, 2),
@@ -307,6 +400,7 @@ def validate_recording_bytes(
         "rms": round(rms, 6),
         "max_amp": round(max_amp, 4),
         "num_samples": len(data),
+        "clipping": clip_stats,
     }
 
     return metadata, warnings, None

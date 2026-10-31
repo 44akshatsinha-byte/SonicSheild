@@ -614,6 +614,32 @@ class PretrainedAASIST:
 
         wav_64k, prep_warnings = self.prepare_audio_for_aasist(audio, sr=sr)
 
+        # Pre-inference telemetry audit (Phase 3)
+        abs_wav = np.abs(wav_64k)
+        count_clipped = int(np.sum(abs_wav >= 0.999))
+        pct_clipped = round((count_clipped / len(wav_64k)) * 100.0, 4)
+        diagnostics = {
+            "input_sample_rate": sr,
+            "target_sample_rate": AASIST_SAMPLE_RATE,
+            "input_num_samples": len(audio),
+            "input_duration_sec": round(len(audio) / float(sr), 3) if sr > 0 else 0.0,
+            "fed_num_samples": len(wav_64k),
+            "fed_dtype": str(wav_64k.dtype),
+            "fed_channels": 1,
+            "min_amplitude": round(float(np.min(wav_64k)), 4),
+            "max_amplitude": round(float(np.max(wav_64k)), 4),
+            "abs_max_amplitude": round(float(np.max(abs_wav)), 4),
+            "rms_energy": round(float(np.sqrt(np.mean(wav_64k**2))), 6),
+            "non_finite_count": int(np.sum(~np.isfinite(wav_64k))),
+            "padding_applied": len(audio) < (AASIST_NB_SAMPLES if sr == 16000 else AASIST_NB_SAMPLES // 2),
+            "truncation_applied": len(audio) > (AASIST_NB_SAMPLES if sr == 16000 else AASIST_NB_SAMPLES // 2),
+            "normalization_applied": "None (Raw IEEE 754 Float32)",
+            "eval_mode": not self.model.training if self.model else False,
+            "inference_mode_active": True,
+            "saturated_samples_count": count_clipped,
+            "saturated_samples_pct": pct_clipped,
+        }
+
         try:
             with torch.inference_mode():
                 tensor_input = torch.from_numpy(wav_64k).unsqueeze(0).to(self.device)  # (1, 64600)
@@ -640,6 +666,7 @@ class PretrainedAASIST:
                     "codec": codec,
                     "status": "success",
                     "warnings": prep_warnings,
+                    "diagnostics": diagnostics,
                 }
         except Exception as e:
             return {
@@ -653,6 +680,7 @@ class PretrainedAASIST:
                 "codec": codec,
                 "status": f"inference_error: {e}",
                 "warnings": prep_warnings + [str(e)],
+                "diagnostics": diagnostics,
             }
 
 

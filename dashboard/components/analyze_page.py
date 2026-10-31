@@ -622,6 +622,27 @@ def render_analyze_page():
             """
             st.markdown(banner_html, unsafe_allow_html=True)
 
+            # Saturated / Clipping Hardware Advisory Banner
+            clip_info = res.get("clipping", {})
+            if clip_info.get("is_clipped"):
+                st.markdown(
+                    f"""
+                    <div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 6px; padding: 10px 14px; margin: 8px 0 10px 0;">
+                        <div style="font-size: 0.74rem; font-weight: 800; color: #DC2626; text-transform: uppercase; margin-bottom: 3px;">
+                            ⚠️ Severe Microphone Input Overdrive Detected (Hardware Clipping)
+                        </div>
+                        <div style="font-size: 0.78rem; color: #7F1D1D; line-height: 1.45;">
+                            Your recording reached digital ceiling saturation (<strong>{clip_info.get('pct_999', 0):.2f}%</strong> saturated samples, 
+                            with up to <strong>{clip_info.get('max_consecutive_rail', 0)} consecutive samples</strong> stuck at the rail). 
+                            Flat-topped waveform clipping produces artificial odd-harmonic distortion that causes AASIST neural filterbanks to output synthetic spoof flags.
+                            <br><span style="color: #991B1B; font-weight: 600;">Recommended Action:</span> Lower your microphone input gain in Windows/Mac Sound Settings to 60%–70% 
+                            or speak 15–20 cm back from the microphone to restore unclipped acoustic dynamics.
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
             if res.get("warnings"):
                 for w in res["warnings"]:
                     st.warning(f"⚠️ {w}")
@@ -716,6 +737,41 @@ def render_analyze_page():
                     """,
                     unsafe_allow_html=True,
                 )
+
+            # Technical Pre-Inference Telemetry Expander (Phase 3 Audit)
+            aas_diag = aasist_data.get("diagnostics")
+            if aas_diag:
+                with st.expander("🔬 AASIST Pre-Inference Waveform Diagnostics (Exact 64,600 Samples Audited)"):
+                    diag_cols = st.columns(4)
+                    with diag_cols[0]:
+                        st.markdown(
+                            f"<div style='font-size:0.70rem;color:#707C8B;'>Sampling Rate & Window</div>"
+                            f"<div style='font-size:0.80rem;font-weight:700;font-family:JetBrains Mono;'>{aas_diag.get('target_sample_rate')} Hz ({aas_diag.get('fed_num_samples')} samples)</div>"
+                            f"<div style='font-size:0.68rem;color:#8E97A4;'>Exact 4.038s evaluation standard</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with diag_cols[1]:
+                        st.markdown(
+                            f"<div style='font-size:0.70rem;color:#707C8B;'>Amplitude & RMS Energy</div>"
+                            f"<div style='font-size:0.80rem;font-weight:700;font-family:JetBrains Mono;'>Max: {aas_diag.get('abs_max_amplitude')} | RMS: {aas_diag.get('rms_energy')}</div>"
+                            f"<div style='font-size:0.68rem;color:#8E97A4;'>Range [{aas_diag.get('min_amplitude')}, {aas_diag.get('max_amplitude')}]</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with diag_cols[2]:
+                        sat_color = "#DC2626" if aas_diag.get('saturated_samples_pct', 0) > 0.02 else "#16A6A0"
+                        st.markdown(
+                            f"<div style='font-size:0.70rem;color:#707C8B;'>Saturation & Distortion</div>"
+                            f"<div style='font-size:0.80rem;font-weight:700;font-family:JetBrains Mono;color:{sat_color};'>{aas_diag.get('saturated_samples_pct')}% at rail</div>"
+                            f"<div style='font-size:0.68rem;color:#8E97A4;'>{aas_diag.get('saturated_samples_count')} samples >= 0.999</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with diag_cols[3]:
+                        st.markdown(
+                            f"<div style='font-size:0.70rem;color:#707C8B;'>PyTorch Execution State</div>"
+                            f"<div style='font-size:0.80rem;font-weight:700;font-family:JetBrains Mono;color:#13A89E;'>eval() + inference_mode</div>"
+                            f"<div style='font-size:0.68rem;color:#8E97A4;'>Non-finite count: {aas_diag.get('non_finite_count')}</div>",
+                            unsafe_allow_html=True,
+                        )
 
             # 3. Supporting Diagnostics: Physics & Biology Engine Cards
             col_diag_phys, col_diag_bio = st.columns(2)

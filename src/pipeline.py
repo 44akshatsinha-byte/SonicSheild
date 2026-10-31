@@ -11,7 +11,7 @@ import time
 import numpy as np
 import scipy.signal
 
-from src.audio_utils import load_audio, load_audio_dual, AudioValidationError
+from src.audio_utils import load_audio, load_audio_dual, analyze_clipping_telemetry, AudioValidationError
 from src.windows import generate_windows, AudioWindow
 from src.codec_crusher import crush, CodecUnavailableError
 from src.physics_engine import analyze as analyze_physics
@@ -59,9 +59,9 @@ def run_pipeline(
     ml_clf = get_ml_classifier()
     if detection_mode in ("ml", "compare") and not ml_clf.is_loaded:
         warnings.append(
-            f"ML model is unavailable ({ml_clf.load_status}). "
-            f"Run 'python scripts/train_ml_model.py' to train and save a model. "
-            f"Baseline rule-based scoring will be used for primary decisions."
+            f"Optional Custom ML Classifier (scikit-learn 18-feature model) is not loaded ({ml_clf.load_status}). "
+            f"Pretrained AASIST Deep Neural Engine is ACTIVE and unaffected. "
+            f"(To train the optional secondary ML classifier, run 'python scripts/train_ml_model.py')."
         )
 
     # Get Pretrained AASIST model instance
@@ -331,6 +331,7 @@ def run_pipeline(
                 break
 
     elapsed_ms = round((time.perf_counter() - start_time) * 1000.0, 1)
+    clip_telemetry = analyze_clipping_telemetry(audio_16k)
 
     return {
         "overall_liveness": overall_liveness,
@@ -365,4 +366,5 @@ def run_pipeline(
         "audio_16k": audio_16k,
         "aasist_input_audio": aasist_input_audio,
         "telephony_out_of_domain": codec != "clean",
+        "clipping": clip_telemetry,
     }

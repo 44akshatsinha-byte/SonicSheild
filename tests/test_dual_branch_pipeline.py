@@ -137,3 +137,4 @@ def test_microphone_recording_and_file_upload_equivalence():
     assert res_bytes["overall_aasist_bona_fide_score"] == res_mic["overall_aasist_bona_fide_score"]
     assert res_bytes["overall_aasist_class"] == res_mic["overall_aasist_class"]
     assert res_bytes["num_windows"] == res_mic["num_windows"]
+

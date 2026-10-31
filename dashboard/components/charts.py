@@ -17,8 +17,9 @@ def audio_to_wav_bytes(audio: np.ndarray, sr: int = 8000) -> bytes:
     sf.write(buf, clipped, sr, format="WAV", subtype="PCM_16")
     return buf.getvalue()
 
-def render_merkur_gauge(score: int, band: str = "green", title: str = "", subtitle: str = "") -> go.Figure:
-    """Creates a compact, architectural gauge indicator."""
+def render_merkur_gauge(score: int | float | None, band: str = "green", title: str = "", subtitle: str = "") -> go.Figure:
+    """Creates a compact, architectural gauge indicator calibrated strictly to 0-100."""
+    clean_score = 50 if score is None else int(np.clip(round(float(score)), 0, 100))
     if band == "green":
         bar_color = "#16A6A0"      # Teal
     elif band == "amber":
@@ -29,7 +30,7 @@ def render_merkur_gauge(score: int, band: str = "green", title: str = "", subtit
     fig = go.Figure(
         go.Indicator(
             mode="gauge+number",
-            value=score,
+            value=clean_score,
             title={"text": f"<b>{title}</b><br><span style='font-size:10px;color:#5F6876'>{subtitle}</span>", "font": {"size": 12, "color": "#14283D", "family": "Plus Jakarta Sans"}},
             domain={"x": [0, 1], "y": [0, 1]},
             number={"suffix": "", "font": {"size": 30, "color": "#14283D", "family": "Plus Jakarta Sans"}},
@@ -46,7 +47,7 @@ def render_merkur_gauge(score: int, band: str = "green", title: str = "", subtit
                 "threshold": {
                     "line": {"color": bar_color, "width": 2.5},
                     "thickness": 0.75,
-                    "value": score,
+                    "value": clean_score,
                 },
             },
         )
