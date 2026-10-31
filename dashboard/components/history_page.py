@@ -72,8 +72,15 @@ def render_history_page():
 
                 col_h1, col_h2, col_h3, col_h4, col_h5 = st.columns([2, 1, 1, 1, 1])
 
+                source_icon = "🎙️" if item.get("source") == "Microphone Recording" else "📁"
+                source_lbl = item.get("source", "Uploaded File")
                 with col_h1:
-                    st.markdown(f"**{item['filename']}**<br><span style='font-size:0.70rem;color:#8E97A4;'>{item['timestamp']}</span>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<span class='ss-spec-pill' style='font-size:0.62rem; margin-bottom:3px;'>{source_icon} {source_lbl}</span><br>"
+                        f"<strong>{item['filename']}</strong><br>"
+                        f"<span style='font-size:0.70rem;color:#8E97A4;'>{item['timestamp']}</span>",
+                        unsafe_allow_html=True,
+                    )
                 with col_h2:
                     st.markdown(f"Codec: `{item['codec']}`<br><span style='font-size:0.70rem;color:#8E97A4;'>{item['duration_sec']}s</span>", unsafe_allow_html=True)
                 with col_h3:
@@ -84,6 +91,7 @@ def render_history_page():
                     if st.button("Reopen", key=f"reopen_hist_{idx}", icon=":material/visibility:", use_container_width=True):
                         st.session_state["active_result"] = item["result_obj"]
                         st.session_state["active_label"] = item["filename"]
+                        st.session_state["active_source_type"] = item.get("source", "Uploaded File")
                         st.session_state["current_page"] = "Analyze Audio"
                         st.rerun()
 

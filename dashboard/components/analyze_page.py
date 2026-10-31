@@ -1,13 +1,16 @@
 """SonicShield Audio Analysis Page Component.
 
 Prioritizes:
-1. Unified container card for audio upload & demo sample selector
-2. Audio signal metadata grid
-3. Cohesive analysis controls panel
-4. Main detection result with cautious labels
-5. AASIST primary neural card & supporting diagnostics
-6. Audio waveform in dark technical console & audio players
-7. Side-by-side comparison mode
+1. Dual Audio Ingress Modes: Mode A (File Upload) & Mode B (Live Microphone Recording)
+2. Audio signal metadata grid with validation diagnostics
+3. Cohesive analysis controls panel (telephony codecs, detection modes, impairments)
+4. Safe temporary file handling with guaranteed cleanup for microphone recordings
+5. Main detection result with cautious labels
+6. Pretrained AASIST neural card showing both Bona-Fide and Spoof model scores
+7. Supporting Physics & Biology diagnostic cards
+8. Multi-engine consensus explanation ("What did SonicShield detect?")
+9. Audio waveform in dark technical console & audio players
+10. Side-by-side comparison mode
 """
 from __future__ import annotations
 
@@ -21,6 +24,7 @@ import streamlit as st
 from src.pipeline import run_pipeline, PipelineError
 from src.codec_crusher import get_supported_codecs
 from src.pretrained_aasist import get_aasist_classifier
+from src.audio_utils import validate_recording_bytes, safe_temporary_wav
 from dashboard.components.charts import (
     render_merkur_gauge,
     render_timeline_chart,
@@ -75,8 +79,70 @@ def format_cautious_outcome(score: int, aasist_class: str | None, active_mode: s
                 "#D99A35",
             )
 
+def generate_multi_engine_explanation(res: dict) -> dict:
+    """Generates an honest, multi-perspective explanation of what SonicShield detected.
+    
+    Synthesizes AASIST neural output, Physics Engine acoustic metrics, 
+    and Biology Engine vocal perturbation to explain agreement or divergence.
+    """
+    aasist_class = res.get("overall_aasist_class")
+    aasist_score = res.get("overall_aasist_bona_fide_score")
+    phys_val = int(round(res.get("physics_mean", 0.5) * 100))
+    bio_val = int(round(res.get("biology_mean", 0.5) * 100))
+
+    # 1. Neural perspective
+    if aasist_class == "bona_fide":
+        neural_desc = (
+            f"Pretrained AASIST neural graph attention observed spectro-temporal continuity characteristic "
+            f"of authentic human speech (Bona-Fide Model Score: {aasist_score:.4f})."
+            if aasist_score is not None else "AASIST leans bona-fide based on neural feature attention."
+        )
+    elif aasist_class == "spoof":
+        neural_desc = (
+            f"Pretrained AASIST neural graph attention flagged phase or spectro-temporal discontinuities "
+            f"characteristic of synthetic vocoders or voice clones (Bona-Fide Model Score: {aasist_score:.4f})."
+            if aasist_score is not None else "AASIST flagged synthetic or cloned speech patterns."
+        )
+    else:
+        neural_desc = "AASIST neural inference was unavailable or inconclusive for this recording."
+
+    # 2. Physics perspective
+    if phys_val >= 60:
+        phys_desc = f"Physics Engine recorded natural room acoustic reverberation decay (EDC) and expected ambient background pause tone ({phys_val}/100)."
+    elif phys_val <= 40:
+        phys_desc = f"Physics Engine observed atypical room acoustic dynamics or rapid unnatural energy drop-offs indicative of dry vocoder rendering or noise suppression ({phys_val}/100)."
+    else:
+        phys_desc = f"Physics Engine measured intermediate reverberation characteristics within typical office/headset bounds ({phys_val}/100)."
+
+    # 3. Biology perspective
+    if bio_val >= 60:
+        bio_desc = f"Biology Engine measured organic glottal micro-perturbations (pitch jitter, shimmer) and natural respiratory intervals ({bio_val}/100)."
+    elif bio_val <= 40:
+        bio_desc = f"Biology Engine detected mathematical regularity or unnatural harmonic stability in pitch and glottal cycles ({bio_val}/100)."
+    else:
+        bio_desc = f"Biology Engine recorded moderate vocal stability consistent with conversational telephone speech ({bio_val}/100)."
+
+    # 4. Engine agreement synthesis
+    if aasist_class == "bona_fide" and phys_val >= 50 and bio_val >= 50:
+        agreement = "Consensus: Acoustic physics, vocal tract dynamics, and deep neural graph representations all align towards authentic human speech patterns."
+        agree_type = "aligned_human"
+    elif aasist_class == "spoof" and (phys_val < 50 or bio_val < 50):
+        agreement = "Consensus: Neural artifacts and supporting acoustic/vocal diagnostics consistently point towards synthetic or cloned voice attributes."
+        agree_type = "aligned_synthetic"
+    else:
+        agreement = "Divergent Indicators: The neural anti-spoofing model and acoustic physical diagnostics exhibit differing evidence levels. Such divergence is common with high-fidelity vocoders in physical rooms or human speakers using noise-cancelling microphones. Human operator verification is recommended."
+        agree_type = "divergent"
+
+    return {
+        "neural": neural_desc,
+        "physics": phys_desc,
+        "biology": bio_desc,
+        "agreement": agreement,
+        "agree_type": agree_type,
+    }
+
 def render_analyze_page():
-    """Renders the balanced, cohesive 4-step guided analysis workflow and results."""
+    """Renders the comprehensive 4-step guided analysis workflow supporting uploads and live microphone recordings."""
     aasist_clf = get_aasist_classifier()
     supported_codecs = get_supported_codecs()
 
@@ -100,9 +166,9 @@ def render_analyze_page():
         col_w1, col_w2 = st.columns([1.5, 1.3])
 
         with col_w1:
-            # Step 1: Upload Audio Recording inside cohesive container
+            # Step 1: Audio Ingress & Input with Segmented Control (Upload vs Live Microphone)
             with st.container(border=True):
-                col_h1, col_h2 = st.columns([3, 1])
+                col_h1, col_h2 = st.columns([2.5, 1.5])
                 with col_h1:
                     st.markdown(
                         """
@@ -110,7 +176,7 @@ def render_analyze_page():
                             1. Audio Ingress & Input
                         </div>
                         <div style="font-size: 0.74rem; color: #707C8B; margin-bottom: 8px;">
-                            Upload a WAV voice recording or select a preloaded benchmark audio file.
+                            Choose an ingress mode: upload a WAV file or record your live voice directly.
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -121,40 +187,170 @@ def render_analyze_page():
                         unsafe_allow_html=True,
                     )
 
-                uploaded_file = st.file_uploader(
-                    "Upload WAV Recording",
-                    type=["wav"],
-                    key="analysis_file_uploader_v3",
-                    label_visibility="collapsed",
-                )
+                # Two distinct ingress modes
+                ingress_options = ["📁 Upload Audio File", "🎙️ Record Live Voice"]
+                saved_mode = st.session_state.get("ingress_mode", "📁 Upload Audio File")
+                if saved_mode not in ingress_options:
+                    saved_mode = "📁 Upload Audio File"
 
-                st.markdown(
-                    "<div style='font-size: 0.74rem; font-weight: 600; color: #14283D; margin: 8px 0 2px 0;'>Or Choose Preloaded Demo Sample:</div>",
-                    unsafe_allow_html=True,
-                )
-                selected_smoke = st.selectbox(
-                    "Select Benchmark Demo Sample",
-                    list(smoke_options.keys()),
-                    key="analysis_smoke_select_v3",
+                ingress_mode = st.segmented_control(
+                    "Input Source Mode",
+                    options=ingress_options,
+                    default=saved_mode,
+                    key="analysis_ingress_selector",
                     label_visibility="collapsed",
                 )
 
                 audio_data = None
                 audio_label = None
+                audio_source_type = "Uploaded File"
+                live_mic_metadata = None
 
-                if uploaded_file is not None:
-                    audio_data = uploaded_file.getvalue()
-                    audio_label = uploaded_file.name
-                    if "queued_source" in st.session_state:
-                        del st.session_state["queued_source"]
-                elif selected_smoke != "None (Upload file)" and smoke_options[selected_smoke]:
-                    audio_data = smoke_options[selected_smoke]
-                    audio_label = selected_smoke
-                    if "queued_source" in st.session_state:
-                        del st.session_state["queued_source"]
-                elif default_audio_source is not None:
-                    audio_data = default_audio_source
-                    audio_label = default_label
+                # =============================================================
+                # MODE A: UPLOAD AUDIO FILE
+                # =============================================================
+                if ingress_mode == "📁 Upload Audio File":
+                    uploaded_file = st.file_uploader(
+                        "Upload WAV Recording",
+                        type=["wav"],
+                        key="analysis_file_uploader_v3",
+                        label_visibility="collapsed",
+                    )
+
+                    st.markdown(
+                        "<div style='font-size: 0.74rem; font-weight: 600; color: #14283D; margin: 8px 0 2px 0;'>Or Choose Preloaded Demo Sample:</div>",
+                        unsafe_allow_html=True,
+                    )
+                    selected_smoke = st.selectbox(
+                        "Select Benchmark Demo Sample",
+                        list(smoke_options.keys()),
+                        key="analysis_smoke_select_v3",
+                        label_visibility="collapsed",
+                    )
+
+                    if uploaded_file is not None:
+                        audio_data = uploaded_file.getvalue()
+                        audio_label = uploaded_file.name
+                        audio_source_type = "Uploaded File"
+                        if "queued_source" in st.session_state:
+                            del st.session_state["queued_source"]
+                    elif selected_smoke != "None (Upload file)" and smoke_options[selected_smoke]:
+                        audio_data = smoke_options[selected_smoke]
+                        audio_label = selected_smoke
+                        audio_source_type = "Uploaded File"
+                        if "queued_source" in st.session_state:
+                            del st.session_state["queued_source"]
+                    elif default_audio_source is not None:
+                        audio_data = default_audio_source
+                        audio_label = default_label
+                        audio_source_type = "Uploaded File"
+
+                # =============================================================
+                # MODE B: RECORD LIVE VOICE VIA MICROPHONE
+                # =============================================================
+                else:
+                    st.markdown(
+                        """
+                        <div class="ss-mic-hero">
+                            <div class="ss-mic-center">
+                                <div class="ss-mic-icon-circle">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                        <line x1="12" y1="19" x2="12" y2="23"/>
+                                        <line x1="8" y1="23" x2="16" y2="23"/>
+                                    </svg>
+                                </div>
+                                <div style="font-size: 0.96rem; font-weight: 800; color: #14283D; line-height: 1.2;">
+                                    Record Your Voice
+                                </div>
+                                <div style="font-size: 0.76rem; color: #707C8B; max-width: 380px; margin-top: 3px;">
+                                    Speak naturally into your microphone. SonicShield will analyze your recording 
+                                    using its acoustic, biological and neural detection engines.
+                                </div>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    # Streamlit Native Microphone Audio Input Widget
+                    recorded_audio = st.audio_input(
+                        "Record your voice (Speak for approximately 6–10 seconds)",
+                        sample_rate=16000,
+                        key="sonicshield_microphone_input",
+                    )
+
+                    if recorded_audio is None:
+                        # State: Ready to Record & Instructions
+                        st.markdown(
+                            """
+                            <div class="ss-instruction-list">
+                                <strong style="color: #14283D; font-size: 0.74rem;">Ready to Record — Quick Instructions:</strong>
+                                <ol>
+                                    <li>Click the red record button in the recorder above to start.</li>
+                                    <li>Allow browser microphone access when prompted.</li>
+                                    <li>Keep your microphone reasonably close and speak in a quiet room.</li>
+                                    <li>Speak naturally for approximately <strong>6–10 seconds</strong> (avoid long silence).</li>
+                                    <li>Click stop when finished to preview your voice before analysis.</li>
+                                </ol>
+                                <div class="ss-privacy-badge">
+                                    <span>🔒</span>
+                                    <span><strong>Privacy Notice:</strong> Your recording is processed in memory by SonicShield. It is never saved permanently by default.</span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        # State: Recording Complete & Validated
+                        rec_bytes = recorded_audio.getvalue()
+                        meta, mic_warnings, mic_error = validate_recording_bytes(rec_bytes)
+
+                        if mic_error:
+                            st.error(f"⚠️ Recording Error: {mic_error}")
+                        else:
+                            live_mic_metadata = meta
+                            audio_data = rec_bytes
+                            audio_label = f"Mic Recording ({meta['duration_sec']:.1f}s)"
+                            audio_source_type = "Microphone Recording"
+
+                            st.markdown(
+                                f"""
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin: 6px 0 4px 0;">
+                                    <span style="font-size: 0.78rem; font-weight: 700; color: #13A89E;">
+                                        ● Recording Complete ({meta['duration_sec']:.2f}s)
+                                    </span>
+                                    <span class="ss-spec-pill" style="color: #13A89E; border-color: rgba(19, 168, 158, 0.4);">
+                                        Ready to Analyze
+                                    </span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
+                            for w in mic_warnings:
+                                st.warning(f"ℹ️ {w}")
+
+                            # Show pre-analysis waveform preview from recorded audio
+                            try:
+                                wave_preview, preview_sr = sf.read(io.BytesIO(rec_bytes), dtype="float32")
+                                if wave_preview.ndim > 1:
+                                    wave_preview = np.mean(wave_preview, axis=1)
+                                st.plotly_chart(
+                                    render_dark_waveform(wave_preview, sr=preview_sr, title="RECORDED VOICE WAVEFORM (PREVIEW)"),
+                                    use_container_width=True,
+                                    config={"displayModeBar": False},
+                                )
+                            except Exception:
+                                pass
+
+                            st.markdown(
+                                "<div style='font-size: 0.70rem; color: #8E97A4; margin-top: 2px;'>"
+                                "💡 Tip: To re-record, delete the recording in the audio control above and speak again."
+                                "</div>",
+                                unsafe_allow_html=True,
+                            )
 
             # Step 2: Audio Signal Metadata inside cohesive container
             with st.container(border=True):
@@ -166,7 +362,7 @@ def render_analyze_page():
                             2. Audio Signal Metadata
                         </div>
                         <div style="font-size: 0.74rem; color: #707C8B; margin-bottom: 8px;">
-                            Header diagnostics and physical signal properties.
+                            Header diagnostics, channel specifications, and physical signal properties.
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -188,12 +384,13 @@ def render_analyze_page():
 
                         duration_sec = len(raw_audio) / float(sr)
                         num_channels = raw_audio.shape[1] if raw_audio.ndim > 1 else 1
+                        src_icon = "🎙️" if audio_source_type == "Microphone Recording" else "📁"
 
                         meta_html = f"""
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 0.76rem;">
                             <div style="background: #F8FAF9; padding: 6px 9px; border-radius: 6px; border: 1px solid #E3E8ED;">
-                                <span style="color: #707C8B;">Audio Source:</span><br>
-                                <strong style="color: #14283D;">{audio_label}</strong>
+                                <span style="color: #707C8B;">Input Ingress Source:</span><br>
+                                <strong style="color: #14283D;">{src_icon} {audio_label}</strong>
                             </div>
                             <div style="background: #F8FAF9; padding: 6px 9px; border-radius: 6px; border: 1px solid #E3E8ED;">
                                 <span style="color: #707C8B;">Signal Duration:</span><br>
@@ -204,7 +401,7 @@ def render_analyze_page():
                                 <strong style="font-family: 'JetBrains Mono';">{sr} Hz ({'Mono' if num_channels == 1 else 'Stereo'})</strong>
                             </div>
                             <div style="background: #F8FAF9; padding: 6px 9px; border-radius: 6px; border: 1px solid #E3E8ED;">
-                                <span style="color: #707C8B;">Uncompressed Size:</span><br>
+                                <span style="color: #707C8B;">Payload Size:</span><br>
                                 <strong style="font-family: 'JetBrains Mono';">{fsize / 1024:.1f} KB</strong>
                             </div>
                         </div>
@@ -213,10 +410,16 @@ def render_analyze_page():
                     except Exception as e:
                         st.warning(f"Could not parse WAV headers: {e}")
                 else:
-                    st.markdown(
-                        "<p style='font-size:0.78rem; color:#707C8B; margin:0;'>Upload a WAV file or pick a benchmark demo above to inspect signal telemetry.</p>",
-                        unsafe_allow_html=True,
-                    )
+                    if ingress_mode == "🎙️ Record Live Voice":
+                        st.markdown(
+                            "<p style='font-size:0.78rem; color:#707C8B; margin:0;'>Record your speech using the microphone control above to inspect physical signal telemetry.</p>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            "<p style='font-size:0.78rem; color:#707C8B; margin:0;'>Upload a WAV file or pick a benchmark demo above to inspect signal telemetry.</p>",
+                            unsafe_allow_html=True,
+                        )
 
         with col_w2:
             # Step 3: Analysis Controls inside cohesive container
@@ -285,22 +488,44 @@ def render_analyze_page():
 
                 st.markdown("<hr style='border: 0; border-top: 1px solid #EEF1F4; margin: 10px 0;'>", unsafe_allow_html=True)
 
-                run_btn = st.button("Run Audio Analysis", icon=":material/play_arrow:", type="primary", use_container_width=True)
+                btn_label = "Analyze Live Recording" if audio_source_type == "Microphone Recording" else "Run Audio Analysis"
+                btn_icon = ":material/mic:" if audio_source_type == "Microphone Recording" else ":material/play_arrow:"
 
-        # Trigger Processing
+                run_btn = st.button(btn_label, icon=btn_icon, type="primary", use_container_width=True)
+
+        # Trigger Processing — Safe execution via existing pipeline
         if run_btn and audio_data is not None:
-            with st.spinner("Executing telephony compression and multi-engine inspection..."):
+            spinner_msg = (
+                "Executing live microphone analysis across acoustic, biological, and neural engines..."
+                if audio_source_type == "Microphone Recording"
+                else "Executing telephony compression and multi-engine inspection..."
+            )
+            with st.spinner(spinner_msg):
                 try:
-                    result = run_pipeline(
-                        file_source=audio_data,
-                        codec=selected_codec,
-                        mode=analysis_mode,
-                        detection_mode=detection_mode,
-                        packet_loss_rate=pkt_loss,
-                        line_noise_snr=noise_snr,
-                    )
+                    # Execute via temporary WAV file for microphone audio, guaranteed cleanup
+                    if audio_source_type == "Microphone Recording" and isinstance(audio_data, bytes):
+                        with safe_temporary_wav(audio_data, prefix="sonicshield_mic_") as temp_wav_path:
+                            result = run_pipeline(
+                                file_source=temp_wav_path,
+                                codec=selected_codec,
+                                mode=analysis_mode,
+                                detection_mode=detection_mode,
+                                packet_loss_rate=pkt_loss,
+                                line_noise_snr=noise_snr,
+                            )
+                    else:
+                        result = run_pipeline(
+                            file_source=audio_data,
+                            codec=selected_codec,
+                            mode=analysis_mode,
+                            detection_mode=detection_mode,
+                            packet_loss_rate=pkt_loss,
+                            line_noise_snr=noise_snr,
+                        )
+
                     st.session_state["active_result"] = result
                     st.session_state["active_label"] = audio_label
+                    st.session_state["active_source_type"] = audio_source_type
                     st.session_state["active_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
                     if "analysis_history" not in st.session_state:
@@ -309,6 +534,7 @@ def render_analyze_page():
                     hist_entry = {
                         "timestamp": st.session_state["active_time"],
                         "filename": audio_label,
+                        "source": audio_source_type,
                         "codec": selected_codec.upper(),
                         "mode": detection_mode,
                         "score": result["overall_liveness"],
@@ -331,6 +557,7 @@ def render_analyze_page():
         if "active_result" in st.session_state:
             res = st.session_state["active_result"]
             lbl = st.session_state.get("active_label", "Audio")
+            active_source = st.session_state.get("active_source_type", "Audio Recording")
             score = res["overall_liveness"]
             band = res["overall_band"]
             active_mode = res.get("detection_mode", "pretrained")
@@ -351,7 +578,7 @@ def render_analyze_page():
             <div class="ss-verdict-banner {verdict_css}">
                 <div>
                     <span class="ss-spec-pill" style="color: {verdict_color}; border-color: {verdict_color}; font-size: 0.66rem;">
-                        ASSESSMENT OUTCOME
+                        ASSESSMENT OUTCOME ({active_source.upper()})
                     </span>
                     <h2 class="ss-verdict-title" style="color: {verdict_color}; margin-top: 4px;">
                         {verdict_title}
@@ -372,13 +599,17 @@ def render_analyze_page():
                 for w in res["warnings"]:
                     st.warning(f"⚠️ {w}")
 
-            # 2. AASIST Primary Neural Engine Card
+            # 2. AASIST Primary Neural Engine Card (Displaying both Bona-Fide & Spoof Model Scores)
             aasist_loaded = res.get("aasist_model_loaded", False)
-            aasist_score = res.get("overall_aasist_bona_fide_score")
+            aasist_bona_score = res.get("overall_aasist_bona_fide_score")
+            aasist_spoof_score = round(1.0 - aasist_bona_score, 4) if aasist_bona_score is not None else None
             aasist_data = res.get("aasist", {})
             raw_logits = aasist_data.get("raw_score")
 
-            aas_class_label = "Bona Fide-Like (Human)" if aasist_class == "bona_fide" else ("Spoof-Like (Synthetic)" if aasist_class == "spoof" else "Unavailable")
+            aas_class_label = (
+                "Bona Fide-Like (Human)" if aasist_class == "bona_fide"
+                else ("Spoof-Like (Synthetic)" if aasist_class == "spoof" else "Unavailable")
+            )
             aas_color = "#13A89E" if aasist_class == "bona_fide" else ("#D95757" if aasist_class == "spoof" else "#707C8B")
 
             st.markdown(
@@ -393,32 +624,39 @@ def render_analyze_page():
                             {'● Model Active' if aasist_loaded else '○ Unloaded'}
                         </span>
                     </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; margin-bottom: 6px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 9px; margin-bottom: 6px;">
                         <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
                             <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Predicted Neural Class</div>
-                            <div style="font-size: 1rem; font-weight: 800; color: {aas_color}; margin: 2px 0;">{aas_class_label}</div>
+                            <div style="font-size: 0.98rem; font-weight: 800; color: {aas_color}; margin: 2px 0;">{aas_class_label}</div>
                             <div style="font-size: 0.68rem; color: #8E97A4;">Maximum logit assignment</div>
                         </div>
                         <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
-                            <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Bona-Fide Model Score</div>
-                            <div style="font-size: 1rem; font-weight: 800; font-family: 'JetBrains Mono'; color: #14283D; margin: 2px 0;">
-                                {f"{aasist_score:.4f}" if aasist_score is not None else "N/A"} <span style="font-size: 0.72rem; color:#707C8B;">/ 1.0</span>
+                            <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">AASIST Bona-Fide Score</div>
+                            <div style="font-size: 0.98rem; font-weight: 800; font-family: 'JetBrains Mono'; color: #13A89E; margin: 2px 0;">
+                                {f"{aasist_bona_score:.4f}" if aasist_bona_score is not None else "N/A"} <span style="font-size: 0.72rem; color:#707C8B;">/ 1.0</span>
                             </div>
-                            <div style="font-size: 0.68rem; color: #8E97A4;">Softmax evidence (uncalibrated)</div>
+                            <div style="font-size: 0.68rem; color: #8E97A4;">Softmax output (uncalibrated)</div>
+                        </div>
+                        <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
+                            <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">AASIST Spoof Score</div>
+                            <div style="font-size: 0.98rem; font-weight: 800; font-family: 'JetBrains Mono'; color: #D95757; margin: 2px 0;">
+                                {f"{aasist_spoof_score:.4f}" if aasist_spoof_score is not None else "N/A"} <span style="font-size: 0.72rem; color:#707C8B;">/ 1.0</span>
+                            </div>
+                            <div style="font-size: 0.68rem; color: #8E97A4;">Softmax output (uncalibrated)</div>
                         </div>
                         <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
                             <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Raw Class Logits (z0, z1)</div>
-                            <div style="font-size: 0.85rem; font-weight: 700; font-family: 'JetBrains Mono'; color: #14283D; margin: 2px 0;">
+                            <div style="font-size: 0.82rem; font-weight: 700; font-family: 'JetBrains Mono'; color: #14283D; margin: 2px 0;">
                                 {f"Spoof: {raw_logits[0]:+.2f} | Bona: {raw_logits[1]:+.2f}" if raw_logits and len(raw_logits)==2 else "N/A"}
                             </div>
                             <div style="font-size: 0.68rem; color: #8E97A4;">Pre-softmax output logits</div>
                         </div>
                         <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
-                            <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Audio Processing Path</div>
-                            <div style="font-size: 0.85rem; font-weight: 700; color: #14283D; margin: 2px 0;">
-                                {res['codec'].upper()} ➔ 16 kHz Mono
+                            <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Ingress & Codec Path</div>
+                            <div style="font-size: 0.82rem; font-weight: 700; color: #14283D; margin: 2px 0;">
+                                {active_source.split()[0]} ➔ {res['codec'].upper()} ➔ 16k Mono
                             </div>
-                            <div style="font-size: 0.68rem; color: #8E97A4;">64,600 samples (~4.04s window)</div>
+                            <div style="font-size: 0.68rem; color: #8E97A4;">64,600 samples window</div>
                         </div>
                     </div>
                 </div>
@@ -447,7 +685,7 @@ def render_analyze_page():
                             Examines room reverberation decay (EDC), ambient pause noise floor, and spectral energy consistency.
                         </p>
                         <div style="font-size: 0.70rem; color: #8E97A4; border-top: 1px solid #EEF1F4; padding-top: 4px;">
-                            Studio recordings with noise gates may yield lower reverberation scores.
+                            Close-talk headset microphones or noise-cancelling hardware naturally produce lower reverberation tails.
                         </div>
                     </div>
                     """,
@@ -469,7 +707,7 @@ def render_analyze_page():
                             Evaluates vocal tract stability, pitch jitter, micro-shimmer, and involuntary respiratory pauses.
                         </p>
                         <div style="font-size: 0.70rem; color: #8E97A4; border-top: 1px solid #EEF1F4; padding-top: 4px;">
-                            Modern vocoders can synthesize realistic pitch contours.
+                            Advanced neural vocoders can synthesize pitch micro-perturbations; treat as supporting evidence.
                         </div>
                     </div>
                     """,
@@ -542,56 +780,90 @@ def render_analyze_page():
                     st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
                     st.plotly_chart(render_timeline_chart(res["windows"], show_ml=False, show_aasist=True), use_container_width=True, config={"displayModeBar": False})
 
-            # 6. Understanding the Detection Signals
+            # 6. Understanding the Detection Signals: What Did SonicShield Detect?
+            explanation = generate_multi_engine_explanation(res)
             with st.container(border=True):
                 st.markdown(
                     """
-                    <div style="margin-bottom: 6px;">
-                        <div style="font-size: 0.92rem; font-weight: 700; color: #14283D;">Signal Interpretation & Agent Guidance</div>
-                        <div style="font-size: 0.74rem; color: #707C8B;">Synthesis of acoustic, biological, and neural indicators for human operators.</div>
+                    <div style="margin-bottom: 8px;">
+                        <div style="font-size: 0.95rem; font-weight: 700; color: #14283D;">What did SonicShield detect?</div>
+                        <div style="font-size: 0.76rem; color: #707C8B;">Coordinated multi-perspective synthesis explaining acoustic, biological, and neural indicators.</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-                col_sig1, col_sig2 = st.columns([1.5, 1.2])
-                with col_sig1:
-                    st.markdown("<div style='font-size:0.78rem; font-weight:700; color:#14283D; margin-bottom:4px;'>Primary Diagnostic Observations:</div>", unsafe_allow_html=True)
-                    for r in res.get("reasons", []):
-                        st.markdown(f"• **{r}**")
+                col_exp1, col_exp2, col_exp3 = st.columns(3)
+                with col_exp1:
+                    st.markdown(
+                        f"""
+                        <div style="background: #F8FAF9; border: 1px solid #E3E8ED; border-top: 2.5px solid var(--ss-teal-accent); border-radius: 6px; padding: 8px 10px; height: 100%;">
+                            <div style="font-size: 0.70rem; font-weight: 700; color: #13A89E; text-transform: uppercase; margin-bottom: 3px;">1. Neural Representation</div>
+                            <div style="font-size: 0.76rem; color: #17212B; line-height: 1.45;">{explanation['neural']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with col_exp2:
+                    st.markdown(
+                        f"""
+                        <div style="background: #F8FAF9; border: 1px solid #E3E8ED; border-top: 2.5px solid #0284C7; border-radius: 6px; padding: 8px 10px; height: 100%;">
+                            <div style="font-size: 0.70rem; font-weight: 700; color: #0284C7; text-transform: uppercase; margin-bottom: 3px;">2. Acoustic Environment</div>
+                            <div style="font-size: 0.76rem; color: #17212B; line-height: 1.45;">{explanation['physics']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with col_exp3:
+                    st.markdown(
+                        f"""
+                        <div style="background: #F8FAF9; border: 1px solid #E3E8ED; border-top: 2.5px solid #8B5CF6; border-radius: 6px; padding: 8px 10px; height: 100%;">
+                            <div style="font-size: 0.70rem; font-weight: 700; color: #8B5CF6; text-transform: uppercase; margin-bottom: 3px;">3. Vocal Physiology</div>
+                            <div style="font-size: 0.76rem; color: #17212B; line-height: 1.45;">{explanation['biology']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-                with col_sig2:
-                    if res.get("agent_tip"):
-                        st.markdown(
-                            f"""
-                            <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 8px 10px;">
-                                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #D97706; margin-bottom: 2px;">
-                                    🛡️ Suggested Agent Verification Prompt
-                                </div>
-                                <div style="font-size: 0.80rem; font-style: italic; color: #92400E; line-height: 1.4;">
-                                    "{res['agent_tip']}"
-                                </div>
+                st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+
+                # Consensus or Divergence Box
+                if explanation["agree_type"] == "divergent":
+                    cons_bg, cons_border, cons_color = "#FFFBEB", "#FDE68A", "#D97706"
+                elif explanation["agree_type"] == "aligned_human":
+                    cons_bg, cons_border, cons_color = "#F0FDF4", "#BBF7D0", "#15803D"
+                else:
+                    cons_bg, cons_border, cons_color = "#FEF2F2", "#FECACA", "#DC2626"
+
+                st.markdown(
+                    f"""
+                    <div style="background: {cons_bg}; border: 1px solid {cons_border}; border-radius: 6px; padding: 9px 12px; margin-bottom: 8px;">
+                        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: {cons_color}; margin-bottom: 2px;">
+                            🛡️ Multi-Engine Consensus & Operator Advisory
+                        </div>
+                        <div style="font-size: 0.78rem; color: #1E293B; line-height: 1.45;">
+                            {explanation['agreement']}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if res.get("agent_tip"):
+                    st.markdown(
+                        f"""
+                        <div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 6px; padding: 7px 11px;">
+                            <span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #64748B;">Suggested Conversational Verification Prompt:</span>
+                            <div style="font-size: 0.78rem; font-style: italic; color: #334155; margin-top: 2px;">
+                                "{res['agent_tip']}"
                             </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        st.markdown(
-                            """
-                            <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 8px 10px;">
-                                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #15803D; margin-bottom: 2px;">
-                                    Normal Verification Status
-                                </div>
-                                <div style="font-size: 0.76rem; color: #166534;">
-                                    Signals fall within standard conversational parameters.
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
         else:
-            st.info("Upload an audio file or select a Demo Benchmark Sample above, then click Run Audio Analysis.")
+            st.info("Record your voice or upload a WAV file above, then click Run Audio Analysis to inspect multi-engine telemetry.")
 
     # =========================================================================
     # TAB 2: DUAL RECORDING COMPARISON

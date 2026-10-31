@@ -95,13 +95,19 @@ def render_overview_page():
     )
 
     # Hero Action Buttons
-    col_cta1, col_cta2, col_spacer = st.columns([1.3, 1.6, 3.1])
+    col_cta1, col_cta2, col_cta3, col_spacer = st.columns([1.3, 1.5, 1.5, 1.7])
     with col_cta1:
-        if st.button("Analyze Audio", icon=":material/graphic_eq:", type="primary", use_container_width=True):
+        if st.button("Upload & Inspect", icon=":material/upload_file:", type="primary", use_container_width=True):
+            st.session_state["ingress_mode"] = "📁 Upload Audio File"
             st.session_state["current_page"] = "Analyze Audio"
             st.rerun()
     with col_cta2:
-        if st.button("Explore Technology", icon=":material/insights:", type="secondary", use_container_width=True):
+        if st.button("Record Live Voice", icon=":material/mic:", type="secondary", use_container_width=True):
+            st.session_state["ingress_mode"] = "🎙️ Record Live Voice"
+            st.session_state["current_page"] = "Analyze Audio"
+            st.rerun()
+    with col_cta3:
+        if st.button("Engine Architecture", icon=":material/insights:", type="secondary", use_container_width=True):
             st.session_state["current_page"] = "Engine Insights"
             st.rerun()
 

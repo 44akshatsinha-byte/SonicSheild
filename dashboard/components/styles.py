@@ -674,5 +674,104 @@ CUSTOM_CSS = """
         margin-top: 1.4rem;
         box-shadow: var(--ss-shadow-sm);
     }
+
+    /* 18. Live Microphone Recording Experience */
+    .ss-mic-hero {
+        background: linear-gradient(180deg, #FFFFFF 0%, #F8FAF9 100%);
+        border: 1px solid var(--ss-border);
+        border-radius: 9px;
+        padding: 1.05rem 1.2rem;
+        margin-bottom: 0.85rem;
+        box-shadow: var(--ss-shadow-sm);
+        position: relative;
+    }
+
+    .ss-mic-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 0.5rem 0.4rem;
+    }
+
+    .ss-mic-icon-circle {
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #14283D 0%, #1A3654 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 0.55rem;
+        box-shadow: 0 4px 14px rgba(20, 40, 61, 0.22);
+        position: relative;
+    }
+
+    .ss-mic-icon-circle::after {
+        content: "";
+        position: absolute;
+        inset: -3px;
+        border-radius: 50%;
+        border: 1.5px solid rgba(19, 168, 158, 0.4);
+        pointer-events: none;
+    }
+
+    .ss-instruction-list {
+        background: #F8FAF9;
+        border: 1px solid var(--ss-border);
+        border-radius: 7px;
+        padding: 8px 12px;
+        font-size: 0.74rem;
+        color: var(--ss-text-secondary);
+        line-height: 1.5;
+        margin-top: 0.55rem;
+    }
+
+    .ss-instruction-list ol {
+        padding-left: 18px;
+        margin: 2px 0 0 0;
+    }
+
+    .ss-instruction-list li {
+        margin-bottom: 2px;
+    }
+
+    .ss-privacy-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px;
+        background: #F1F5F9;
+        border: 1px solid #CBD5E1;
+        border-radius: 4px;
+        font-size: 0.68rem;
+        color: var(--ss-text-secondary);
+        margin-top: 0.45rem;
+    }
+
+    /* Streamlit Audio Input Widget Customization */
+    div[data-testid="stAudioInput"] {
+        background: #FFFFFF !important;
+        border: 1.5px solid var(--ss-border) !important;
+        border-radius: 8px !important;
+        padding: 0.75rem 1rem !important;
+        box-shadow: var(--ss-shadow-sm) !important;
+        transition: border-color 0.15s ease !important;
+    }
+
+    div[data-testid="stAudioInput"]:hover {
+        border-color: var(--ss-teal-accent) !important;
+    }
+
+    div[data-testid="stSegmentedControl"] {
+        margin-bottom: 0.65rem !important;
+    }
+
+    div[data-testid="stSegmentedControl"] button {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        padding: 0.38rem 0.95rem !important;
+    }
 </style>
 """
