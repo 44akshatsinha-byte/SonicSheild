@@ -27,3 +27,4 @@ try:
         print("FastAPI /analyze status: SUCCESS")
 except Exception as e:
     print("FastAPI request failed:", e)
+

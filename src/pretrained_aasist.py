@@ -654,12 +654,15 @@ class PretrainedAASIST:
                 # Classification mapping: 1 = bona_fide, 0 = spoof
                 predicted_class = "bona_fide" if prob_bonafide >= 0.5 else "spoof"
                 liveness_score = int(np.clip(round(prob_bonafide * 100.0), 0, 100))
+                logit_diff = float(raw_logits[1] - raw_logits[0])
 
                 return {
                     "model": "AASIST",
                     "model_loaded": True,
                     "predicted_class": predicted_class,
                     "bona_fide_score": round(prob_bonafide, 4),
+                    "spoof_score": round(prob_spoof, 4),
+                    "logit_diff": round(logit_diff, 4),
                     "liveness_score": liveness_score,
                     "raw_score": [round(float(raw_logits[0]), 4), round(float(raw_logits[1]), 4)],
                     "sample_rate": AASIST_SAMPLE_RATE,
@@ -674,6 +677,8 @@ class PretrainedAASIST:
                 "model_loaded": True,
                 "predicted_class": "error",
                 "bona_fide_score": None,
+                "spoof_score": None,
+                "logit_diff": None,
                 "liveness_score": None,
                 "raw_score": None,
                 "sample_rate": AASIST_SAMPLE_RATE,

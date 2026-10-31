@@ -229,10 +229,10 @@ def render_overview_page():
 
         with col_up:
             uploaded_overview = st.file_uploader(
-                "Upload WAV audio file (mono/stereo)",
-                type=["wav"],
+                "Upload audio file (WAV, MP3, FLAC, OGG)",
+                type=["wav", "mp3", "flac", "ogg"],
                 key="overview_uploader_v3",
-                help="Accepts standard WAV format. File will be processed according to telephony codec.",
+                help="Accepts WAV, MP3, FLAC, and OGG formats. File will be processed according to telephony codec.",
                 label_visibility="collapsed",
             )
 

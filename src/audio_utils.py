@@ -23,6 +23,15 @@ class AudioValidationWarning(UserWarning):
     pass
 
 
+def detect_unsupported_audio_format(header_bytes: bytes) -> str | None:
+    """Detects unsupported audio containers by magic bytes to return clear, actionable guidance."""
+    if len(header_bytes) >= 4 and header_bytes.startswith(b"\x1a\x45\xdf\xa3"):
+        return "WebM / Matroska (Opus) container format detected. Please export or record in standard WAV, MP3, FLAC, or OGG format."
+    if b"ftyp" in header_bytes[:32]:
+        return "M4A / AAC container format detected. Please export or record in standard WAV, MP3, FLAC, or OGG format."
+    return None
+
+
 def analyze_clipping_telemetry(wav: np.ndarray, threshold: float = 0.999) -> dict:
     """Performs rigorous 10-point waveform amplitude and digital rail clipping analysis.
     
@@ -146,7 +155,22 @@ def load_audio_dual(
     try:
         data, orig_sr = sf.read(file_source, dtype="float32", always_2d=True)
     except Exception as e:
-        raise AudioValidationError(f"Could not read audio file: {e}") from e
+        if isinstance(file_source, io.BytesIO):
+            file_source.seek(0)
+            header_sample = file_source.read(32)
+            detected = detect_unsupported_audio_format(header_sample)
+            if detected:
+                raise AudioValidationError(detected) from e
+        elif isinstance(file_source, str) and os.path.exists(file_source):
+            try:
+                with open(file_source, "rb") as hf:
+                    header_sample = hf.read(32)
+                detected = detect_unsupported_audio_format(header_sample)
+                if detected:
+                    raise AudioValidationError(detected) from e
+            except OSError:
+                pass
+        raise AudioValidationError(f"Could not read audio file: {e}. Supported formats include WAV, MP3, FLAC, and OGG.") from e
 
     if data.size == 0 or len(data) == 0:
         raise AudioValidationError("Audio contains no sample data.")
@@ -237,7 +261,22 @@ def load_audio(
     try:
         data, orig_sr = sf.read(file_source, dtype="float32", always_2d=True)
     except Exception as e:
-        raise AudioValidationError(f"Could not read audio file: {e}") from e
+        if isinstance(file_source, io.BytesIO):
+            file_source.seek(0)
+            header_sample = file_source.read(32)
+            detected = detect_unsupported_audio_format(header_sample)
+            if detected:
+                raise AudioValidationError(detected) from e
+        elif isinstance(file_source, str) and os.path.exists(file_source):
+            try:
+                with open(file_source, "rb") as hf:
+                    header_sample = hf.read(32)
+                detected = detect_unsupported_audio_format(header_sample)
+                if detected:
+                    raise AudioValidationError(detected) from e
+            except OSError:
+                pass
+        raise AudioValidationError(f"Could not read audio file: {e}. Supported formats include WAV, MP3, FLAC, and OGG.") from e
 
     if data.size == 0 or len(data) == 0:
         raise AudioValidationError("Audio contains no sample data.")
@@ -335,7 +374,10 @@ def validate_recording_bytes(
     try:
         data, orig_sr = sf.read(io.BytesIO(raw_bytes), dtype="float32", always_2d=True)
     except Exception as e:
-        return None, [], f"Could not decode audio recording: {e}. Please ensure your browser supports WAV recording."
+        detected = detect_unsupported_audio_format(raw_bytes[:32])
+        if detected:
+            return None, [], f"Could not decode audio recording: {detected}"
+        return None, [], f"Could not decode audio recording: {e}. Supported formats include WAV, MP3, FLAC, and OGG."
 
     if data.size == 0 or len(data) == 0:
         return None, [], "Audio recording contains no sample frames."

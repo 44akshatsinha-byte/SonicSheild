@@ -219,8 +219,8 @@ def render_analyze_page():
                 # =============================================================
                 if ingress_mode == "📁 Upload Audio File":
                     uploaded_file = st.file_uploader(
-                        "Upload WAV Recording",
-                        type=["wav"],
+                        "Upload Audio Recording (WAV, MP3, FLAC, OGG)",
+                        type=["wav", "mp3", "flac", "ogg"],
                         key="analysis_file_uploader_v3",
                         label_visibility="collapsed",
                     )
@@ -237,9 +237,17 @@ def render_analyze_page():
                     )
 
                     if uploaded_file is not None:
-                        audio_data = uploaded_file.getvalue()
-                        audio_label = uploaded_file.name
-                        audio_source_type = "Uploaded File"
+                        file_bytes = uploaded_file.getvalue()
+                        meta, up_warnings, up_error = validate_recording_bytes(file_bytes)
+                        if up_error:
+                            st.error(f"⚠️ Audio Validation Error: {up_error}")
+                            audio_data = None
+                        else:
+                            audio_data = file_bytes
+                            audio_label = uploaded_file.name
+                            audio_source_type = "Uploaded File"
+                            for w in up_warnings:
+                                st.warning(f"ℹ️ {w}")
                         if "queued_source" in st.session_state:
                             del st.session_state["queued_source"]
                     elif selected_smoke != "None (Upload file)" and smoke_options[selected_smoke]:
@@ -574,8 +582,10 @@ def render_analyze_page():
                     st.session_state["analysis_history"].insert(0, hist_entry)
                     st.success("Analysis completed successfully.")
                 except PipelineError as pe:
+                    st.session_state["active_result"] = None
                     st.error(f"Analysis Pipeline Error: {pe}")
                 except Exception as ex:
+                    st.session_state["active_result"] = None
                     st.error(f"Unexpected Processing Error: {ex}")
 
         # =====================================================================
@@ -617,6 +627,7 @@ def render_analyze_page():
                     <div style="font-size: 1.75rem; font-weight: 800; font-family: 'JetBrains Mono'; color: {verdict_color}; line-height: 1.1;">
                         {score} <span style="font-size: 0.82rem; color: #707C8B;">/ 100</span>
                     </div>
+                    {f'<div style="font-size: 0.68rem; color: #707C8B; font-family: \'JetBrains Mono\';">P(Bona-Fide): {aasist_bona_score * 100:.2f}%</div>' if (active_mode == 'pretrained' and aasist_bona_score is not None) else ''}
                 </div>
             </div>
             """
@@ -702,9 +713,9 @@ def render_analyze_page():
                         <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
                             <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Raw Class Logits (z0, z1)</div>
                             <div style="font-size: 0.82rem; font-weight: 700; font-family: 'JetBrains Mono'; color: #14283D; margin: 2px 0;">
-                                {f"Spoof: {raw_logits[0]:+.2f} | Bona: {raw_logits[1]:+.2f}" if raw_logits and len(raw_logits)==2 else "N/A"}
+                                {f"Spoof: {raw_logits[0]:+.2f} | Bona: {raw_logits[1]:+.2f} (Δ: {raw_logits[1]-raw_logits[0]:+.2f})" if raw_logits and len(raw_logits)==2 else "N/A"}
                             </div>
-                            <div style="font-size: 0.68rem; color: #8E97A4;">Pre-softmax output logits</div>
+                            <div style="font-size: 0.68rem; color: #8E97A4;">Pre-softmax output logits (margin)</div>
                         </div>
                         <div style="background: #F8FAF9; padding: 7px 10px; border-radius: 6px; border: 1px solid #E3E8ED;">
                             <div style="font-size: 0.66rem; color: #707C8B; text-transform: uppercase; font-weight: 600;">Ingress & Codec Path</div>

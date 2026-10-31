@@ -77,7 +77,10 @@ def run_pipeline(
     # Branch A: 8,000 Hz float32 mono for Physics and Biology diagnostic engines (Telephony domain)
     # Branch B: 16,000 Hz float32 mono for AASIST Neural Anti-Spoofing engine (Wideband domain)
     if isinstance(file_source, np.ndarray):
-        raw_arr = file_source.astype(np.float32)
+        if np.issubdtype(file_source.dtype, np.integer):
+            raw_arr = (file_source.astype(np.float32) / 32768.0).astype(np.float32)
+        else:
+            raw_arr = file_source.astype(np.float32)
         if sr == 8000:
             audio_8k = raw_arr
             audio_16k = scipy.signal.resample_poly(raw_arr, 2, 1).astype(np.float32)

@@ -81,10 +81,11 @@ async def analyze_audio(
     """Analyzes an uploaded audio file and returns per-window and aggregate acoustic liveness results."""
     # Validate content type / filename
     filename = (file.filename or "").lower()
-    if not (filename.endswith(".wav") or "audio" in (file.content_type or "")):
+    allowed_exts = (".wav", ".mp3", ".flac", ".ogg")
+    if not (any(filename.endswith(ext) for ext in allowed_exts) or "audio" in (file.content_type or "")):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type '{file.content_type}'. Please upload a standard WAV audio file.",
+            detail=f"Invalid file type '{file.content_type}'. Please upload an audio file (WAV, MP3, FLAC, or OGG).",
         )
 
     content = await file.read()
