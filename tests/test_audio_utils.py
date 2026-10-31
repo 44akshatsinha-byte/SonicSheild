@@ -52,3 +52,38 @@ def test_save_wav_roundtrip():
     loaded, sr, _ = load_audio(buf)
     assert sr == 8000
     assert np.allclose(audio_orig, loaded, atol=1e-3)
+
+
+def test_analyze_clipping_telemetry_normal():
+    from src.audio_utils import analyze_clipping_telemetry
+    wav = np.sin(np.linspace(0, 100 * np.pi, 8000)).astype(np.float32) * 0.75
+    telemetry = analyze_clipping_telemetry(wav)
+    assert not telemetry["is_clipped"]
+    assert not telemetry["is_transient_peak"]
+    assert telemetry["pct_999"] == 0.0
+    assert telemetry["max_abs"] == pytest.approx(0.75, abs=0.01)
+
+
+def test_analyze_clipping_telemetry_severe_clipping():
+    from src.audio_utils import analyze_clipping_telemetry
+    wav = np.sin(np.linspace(0, 100 * np.pi, 8000)).astype(np.float32) * 3.0
+    clipped = np.clip(wav, -1.0, 1.0)
+    telemetry = analyze_clipping_telemetry(clipped)
+    assert telemetry["is_clipped"]
+    assert telemetry["max_consecutive_rail"] >= 4
+    assert telemetry["plateau_runs"] > 0
+    assert telemetry["pct_999"] > 1.0
+    assert telemetry["warning"] is not None
+    assert "clipping detected" in telemetry["warning"].lower()
+
+
+def test_analyze_clipping_telemetry_isolated_transient():
+    from src.audio_utils import analyze_clipping_telemetry
+    wav = np.zeros(8000, dtype=np.float32)
+    # A single isolated spike reaching 1.0 (e.g. from Gibbs overshoot)
+    wav[100] = 1.0
+    telemetry = analyze_clipping_telemetry(wav)
+    assert not telemetry["is_clipped"]
+    assert telemetry["is_transient_peak"]
+    assert telemetry["max_consecutive_rail"] == 1
+
